@@ -16,7 +16,7 @@ jobs:
         echo "NDK_VERSION=r25c" >> $GITHUB_ENV
         echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
         echo "CURL_VERSION=8.8.0" >> $GITHUB_ENV
-        echo "OPENSSL_VERSION=1.1.1w" >> $GITHUB_ENV
+        # echo "OPENSSL_VERSION=1.1.1w" >> $GITHUB_ENV
         echo "API_LEVEL=19" >> $GITHUB_ENV
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
@@ -62,14 +62,13 @@ jobs:
         echo "LIBS='-llog -landroid'" >> $GITHUB_ENV
         echo "PATH=${{ env.TOOLCHAIN }}/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Build OpenSSL 1.1.1 with patch
+    - name: Build OpenSSL 3.x (Fixed for Android)
       run: |
-        wget -q https://www.openssl.org/source/openssl-${{ env.OPENSSL_VERSION }}.tar.gz
-        tar -xzf openssl-${{ env.OPENSSL_VERSION }}.tar.gz
-        cd openssl-${{ env.OPENSSL_VERSION }}
-        
-        # Terapkan patch untuk memperbaiki masalah Android
-        curl -sL https://gist.githubusercontent.com/vi/d9b44e8b3c3a7e1c5a8e7e3d3d3d3d3d/raw/openssl-android-fix.patch | patch -p1
+        # Gunakan OpenSSL versi terbaru yang lebih compatible
+        OPENSSL_VERSION="3.0.13"
+        wget -q https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz
+        tar -xzf openssl-$OPENSSL_VERSION.tar.gz
+        cd openssl-$OPENSSL_VERSION
         
         # Set environment
         export CC="${{ env.CC }}"
@@ -78,6 +77,7 @@ jobs:
         export CFLAGS="${{ env.CFLAGS }}"
         export LDFLAGS="${{ env.LDFLAGS }}"
         
+        # Konfigurasi khusus untuk Android
         ./Configure android-arm \
           -D__ANDROID_API__=${{ env.API_LEVEL }} \
           --prefix=${{ env.PREFIX }} \
@@ -85,8 +85,7 @@ jobs:
           no-shared \
           no-asm
         
-        make depend
-        make -j$(nproc) build_libs
+        make -j$(nproc)
         make install_sw
 
     - name: Build cURL
