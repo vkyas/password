@@ -62,19 +62,24 @@ jobs:
         echo "LIBS='-llog -landroid'" >> $GITHUB_ENV
         echo "PATH=${{ env.TOOLCHAIN }}/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Install prebuilt OpenSSL
+    - name: Build OpenSSL with NDK build system
       run: |
-        # Salin OpenSSL dari NDK
-        mkdir -p ${{ env.PREFIX }}/lib
-        mkdir -p ${{ env.PREFIX }}/include
+        git clone https://github.com/openssl/openssl.git
+        cd openssl
+        git checkout OpenSSL_1_1_1w
         
-        cp ${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi/libcrypto.so ${{ env.PREFIX }}/lib/
-        cp ${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi/libssl.so ${{ env.PREFIX }}/lib/
-        cp -r ${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/openssl ${{ env.PREFIX }}/include/
+        # Gunakan toolchain NDK langsung
+        ${{ env.NDK_HOME }}/ndk-build \
+          NDK_PROJECT_PATH=. \
+          APP_BUILD_SCRIPT=Android.mk \
+          APP_ABI=armeabi-v7a \
+          APP_PLATFORM=android-19 \
+          APP_STL=c++_static \
+          NDK_APPLICATION_MK=Application.mk
         
-        # Verifikasi
-        ls -l ${{ env.PREFIX }}/lib/libssl.so
-        ls -l ${{ env.PREFIX }}/lib/libcrypto.so
+        # Salin hasil build
+        cp -r libs/armeabi-v7a/* ${{ env.PREFIX }}/lib/
+        cp -r include/* ${{ env.PREFIX }}/include/
 
     - name: Build cURL
       run: |
