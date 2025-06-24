@@ -136,16 +136,16 @@ jobs:
     - name: ⚙️ Configure PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
-        export CC="${CC}"
-        export CXX="${CXX}"
-        export AR="${AR}"
-        export RANLIB="${RANLIB}"
-        export STRIP="${STRIP}"
-        export CFLAGS="${CFLAGS} -I${PREFIX}/include"
-        export CPPFLAGS="-I${PREFIX}/include"
-        export LDFLAGS="-L${PREFIX}/lib"
-        export LIBS="${LIBS} -L${PREFIX}/lib"
-        export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+        export CC="${{ env.CC }}"
+        export CXX="${{ env.CXX }}"
+        export AR="${{ env.AR }}"
+        export RANLIB="${{ env.RANLIB }}"
+        export STRIP="${{ env.STRIP }}"
+        export CFLAGS="${{ env.CFLAGS }} -I${{ env.PREFIX }}/include"
+        export CPPFLAGS="-I${{ env.PREFIX }}/include"
+        export LDFLAGS="-L${{ env.PREFIX }}/lib"
+        export LIBS="-liconv -llog -landroid -lm"
+        export PKG_CONFIG_PATH="${{ env.PREFIX }}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
         
         ../${PHP_SOURCE}/configure \
           --build=x86_64-pc-linux-gnu \
