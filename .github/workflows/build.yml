@@ -15,7 +15,7 @@ jobs:
       run: |
         echo "NDK_VERSION=r25c" >> $GITHUB_ENV
         echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
-        echo "API_LEVEL=19" >> $GITHUB_ENV
+        echo "API_LEVEL=22" >> $GITHUB_ENV
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
         echo "NDK_HOME=${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
