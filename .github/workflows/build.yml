@@ -13,7 +13,7 @@ jobs:
 
     - name: Setup environment
       run: |
-        echo "NDK_VERSION=r27c" >> $GITHUB_ENV
+        echo "NDK_VERSION=r25c" >> $GITHUB_ENV
         echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
         echo "CURL_VERSION=8.8.0" >> $GITHUB_ENV
         echo "OPENSSL_VERSION=1.1.1w" >> $GITHUB_ENV
@@ -72,24 +72,29 @@ jobs:
         echo "LDFLAGS=\"-Wl,--fix-cortex-a8 -Wl,--no-undefined -L${{ env.PREFIX }}/lib -fPIE -pie\"" >> $GITHUB_ENV
         echo "LIBS=\"-llog -landroid\"" >> $GITHUB_ENV
 
-    - name: Build OpenSSL (Alternate)
+    - name: Build OpenSSL (Manual Configuration)
       run: |
         wget -q https://www.openssl.org/source/openssl-${{ env.OPENSSL_VERSION }}.tar.gz
         tar -xzf openssl-${{ env.OPENSSL_VERSION }}.tar.gz
         cd openssl-${{ env.OPENSSL_VERSION }}
         
-        # Download setenv script
-        wget -q https://raw.githubusercontent.com/openssl/openssl/master/util/setenv-android.sh
-        chmod +x setenv-android.sh
+        # Set environment variables manually
+        export ANDROID_NDK_HOME=${{ env.NDK_HOME }}
+        export PATH=${{ env.TOOLCHAIN_PATH }}:$PATH
+        export CC=arm-linux-androideabi-clang
+        export AR=arm-linux-androideabi-ar
+        export RANLIB=arm-linux-androideabi-ranlib
+        export LD=arm-linux-androideabi-ld
+        export STRIP=arm-linux-androideabi-strip
         
-        # Set environment
-        . ./setenv-android.sh --ndk ${{ env.NDK_HOME }} --arch arm --api ${{ env.API_LEVEL }}
-        
+        # Configure OpenSSL
         ./Configure android-arm -D__ANDROID_API__=${{ env.API_LEVEL }} \
           --prefix=${{ env.PREFIX }} \
           -latomic \
           no-shared \
-          no-asm
+          no-asm \
+          -fPIE \
+          -fPIC
         
         make depend
         make -j$(nproc) build_libs
@@ -150,6 +155,11 @@ jobs:
     - name: Configure PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
+        # Verifikasi library yang dibangun
+        ls -la ${{ env.PREFIX }}/lib/libcrypto*
+        ls -la ${{ env.PREFIX }}/lib/libssl*
+        ls -la ${{ env.PREFIX }}/lib/libcurl*
+        
         ../${{ env.PHP_SOURCE }}/configure \
           --host=arm-linux-androideabi \
           --prefix=/php \
