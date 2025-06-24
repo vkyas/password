@@ -136,18 +136,21 @@ jobs:
     - name: ⚙️ Configure PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
-        export CC="${{ env.CC }}"
-        export CXX="${{ env.CXX }}"
-        export AR="${{ env.AR }}"
-        export RANLIB="${{ env.RANLIB }}"
-        export STRIP="${{ env.STRIP }}"
-        export CFLAGS="${{ env.CFLAGS }} -I${{ env.PREFIX }}/include"
-        export CPPFLAGS="-I${{ env.PREFIX }}/include"
-        export LDFLAGS="-L${{ env.PREFIX }}/lib"
+        set -e
+    
+        export CC="${CC}"
+        export CXX="${CXX}"
+        export AR="${AR}"
+        export RANLIB="${RANLIB}"
+        export STRIP="${STRIP}"
+    
+        export CPPFLAGS="-I${PREFIX}/include"
+        export CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I${PREFIX}/include"
+        export LDFLAGS="-L${PREFIX}/lib -Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie"
         export LIBS="-liconv -llog -landroid -lm"
-        export PKG_CONFIG_PATH="${{ env.PREFIX }}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-        
-        ../${PHP_SOURCE}/configure \
+        export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+    
+        if ! ../${PHP_SOURCE}/configure \
           --build=x86_64-pc-linux-gnu \
           --host=${HOST_TRIPLE} \
           --prefix=/data/php \
@@ -190,12 +193,14 @@ jobs:
           --without-pear \
           --disable-cgi \
           --disable-fpm
-          
-    - name: 📁 Upload config.log for debugging
-      uses: actions/upload-artifact@v4
-      with:
-        name: config-log
-        path: ${{ env.WORKDIR }}/config.log
+        then
+          echo "::error ::PHP configure failed! Extracting errors from config.log..."
+          echo "------------------ CONFIG.LOG ERROR SNIPPET ------------------"
+          grep -i -A20 'error' config.log || true
+          echo "------------------ END OF ERROR SNIPPET ---------------------"
+          exit 1
+        fi
+
     
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
