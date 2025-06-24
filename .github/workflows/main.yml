@@ -165,13 +165,14 @@ jobs:
         tar -xzf php-${{ env.PHP_VERSION }}.tar.gz
         echo "PHP_SOURCE=php-${{ env.PHP_VERSION }}" >> $GITHUB_ENV
 
-    # - name: Disable dns.c
-    #   run: mv php-8.4.8/ext/standard/dns.c php-8.4.8/ext/standard/dns.c.disabled
-    
-    # - name: Regenerate buildconf
-    #   run: |
-    #     cd php-8.4.8
-    #     ./buildconf --force
+    - name: ⛔️ Disable dns.c
+      run: |
+        mv php-${PHP_VERSION}/ext/standard/dns.c php-${PHP_VERSION}/ext/standard/dns.c.disabled
+
+    - name: 💡 Run buildconf
+      run: |
+        cd php-${PHP_VERSION}
+        ./buildconf --force
     
     - name: 🗂️ Prepare build directories
       run: |
