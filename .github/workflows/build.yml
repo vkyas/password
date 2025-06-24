@@ -14,8 +14,8 @@ jobs:
     - name: ⚙️ Setup environment
       run: |
         echo "NDK_VERSION=r25c" >> $GITHUB_ENV
-        echo "PHP_VERSION=8.4.8" >> $GITHUB_ENV
-        echo "API_LEVEL=21" >> $GITHUB_ENV
+        echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
+        echo "API_LEVEL=22" >> $GITHUB_ENV
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
         echo "NDK_HOME=$GITHUB_WORKSPACE/android-ndk-r25c" >> $GITHUB_ENV
@@ -60,6 +60,10 @@ jobs:
         echo "LDFLAGS='-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie'" >> $GITHUB_ENV
         echo "LIBS='-llog -landroid -lm'" >> $GITHUB_ENV
         echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
+        
+        ls -l $SYSROOT/usr/lib
+        ls -l $SYSROOT/usr/lib/arm-linux-androideabi
+
 
     - name: 📄 Download PHP
       run: |
@@ -91,18 +95,23 @@ jobs:
         export AR="${{ env.AR }}"
         export RANLIB="${{ env.RANLIB }}"
         export STRIP="${{ env.STRIP }}"
-        export CFLAGS="${{ env.CFLAGS }}"
-        export LDFLAGS="${{ env.LDFLAGS }}"
-        export LIBS="${{ env.LIBS }}"
+        # export CFLAGS="${{ env.CFLAGS }}"
+        # export LDFLAGS="${{ env.LDFLAGS }}"
+        # export LIBS="${{ env.LIBS }}"
+        export CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$PREFIX/include"
+        export LDFLAGS="-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie"
+        export LIBS="-llog -landroid -lm"
         export CPPFLAGS="-I${{ env.PREFIX }}/include"
         
+        
         ../${{ env.PHP_SOURCE }}/configure \
-          --host=${{ env.HOST_TRIPLE }} \
+          # --host=${{ env.HOST_TRIPLE }} \
+          --host=arm-linux-androideabi
           --prefix=/data/php \
           --disable-all \
           --enable-mbstring \
           --enable-bcmath \
-          --enable-json \
+          # --enable-json \
           --enable-session \
           --enable-posix \
           --enable-sockets \
