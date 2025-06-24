@@ -63,7 +63,7 @@ jobs:
 
     - name: 🔤 Build libiconv
       run: |
-        wget -q https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz
+        wget -q https://github.com/vkyas/password/releases/download/lib/libiconv-1.17.tar.gz
         tar -xzf libiconv-1.17.tar.gz
         cd libiconv-1.17
 
@@ -113,7 +113,7 @@ jobs:
 
     - name: 🔤 Build freetype
       run: |
-        wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.0.tar.gz
+        wget -q https://github.com/vkyas/password/releases/download/lib/freetype-2.13.0.tar.gz
         tar -xzf freetype-2.13.0.tar.gz
         cd freetype-2.13.0
         ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static --without-brotli \
