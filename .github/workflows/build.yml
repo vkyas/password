@@ -116,11 +116,11 @@ jobs:
         wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.0.tar.gz
         tar -xzf freetype-2.13.0.tar.gz
         cd freetype-2.13.0
-        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static \
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static --without-brotli \
           CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
-        make -j$(nproc)
-        make install
-        cd ..
+         make -j$(nproc)
+         make install
+         cd ..
 
     - name: 📄 Download PHP source
       run: |
