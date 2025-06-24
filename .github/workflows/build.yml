@@ -1,0 +1,165 @@
+name: Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup environment
+      run: |
+        echo "NDK_VERSION=r25c" >> $GITHUB_ENV
+        echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
+        echo "API_LEVEL=19" >> $GITHUB_ENV
+        echo "WORKDIR=build-arm32" >> $GITHUB_ENV
+        echo "OUTDIR=output-arm32" >> $GITHUB_ENV
+        echo "TOOLCHAIN_DIR=arm-toolchain" >> $GITHUB_ENV
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          autoconf \
+          automake \
+          libtool \
+          pkg-config \
+          bison \
+          re2c \
+          make \
+          wget \
+          unzip \
+          file \
+          python3 \
+          libssl-dev \
+          zlib1g-dev \
+          libargon2-dev \
+          libsodium-dev \
+          sqlite3 \
+          libsqlite3-dev \
+          libonig-dev \
+          libxml2-dev
+
+    - name: Download Android NDK
+      run: |
+        wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        echo "NDK_HOME=$(pwd)/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+
+    - name: Create standalone toolchain
+      run: |
+        ${{ env.NDK_HOME }}/build/tools/make_standalone_toolchain.py \
+          --arch arm \
+          --api ${{ env.API_LEVEL }} \
+          --install-dir ${{ env.TOOLCHAIN_DIR }} \
+          --force
+        
+        echo "TOOLCHAIN_PATH=$(pwd)/${{ env.TOOLCHAIN_DIR }}/bin" >> $GITHUB_ENV
+        echo "SYSROOT=$(pwd)/${{ env.TOOLCHAIN_DIR }}/sysroot" >> $GITHUB_ENV
+        echo "PATH=$(pwd)/${{ env.TOOLCHAIN_DIR }}/bin:$PATH" >> $GITHUB_ENV
+
+    - name: Setup compiler
+      run: |
+        echo "CC=arm-linux-androideabi-clang" >> $GITHUB_ENV
+        echo "CXX=arm-linux-androideabi-clang++" >> $GITHUB_ENV
+        echo "AR=arm-linux-androideabi-ar" >> $GITHUB_ENV
+        echo "RANLIB=arm-linux-androideabi-ranlib" >> $GITHUB_ENV
+        echo "STRIP=arm-linux-androideabi-strip" >> $GITHUB_ENV
+
+    - name: Test compiler
+      run: |
+        echo "int main() { return 0; }" > test.c
+        arm-linux-androideabi-clang test.c -o test -pie
+        file test
+
+    - name: Download PHP source
+      run: |
+        wget -q https://www.php.net/distributions/php-${{ env.PHP_VERSION }}.tar.gz
+        tar -xzf php-${{ env.PHP_VERSION }}.tar.gz
+        echo "PHP_SOURCE=php-${{ env.PHP_VERSION }}" >> $GITHUB_ENV
+
+    - name: Create build environment
+      run: |
+        mkdir -p ${{ env.WORKDIR }}
+        mkdir -p ${{ env.OUTDIR }}
+
+    - name: Configure PHP (Fixed cURL support)
+      working-directory: ${{ env.WORKDIR }}
+      run: |
+        # Verifikasi library cURL
+        ls -la $SYSROOT/usr/lib/libcurl*
+        ls -la $SYSROOT/usr/include/curl
+        
+        ../${{ env.PHP_SOURCE }}/configure \
+          --host=arm-linux-androideabi \
+          --prefix=/php \
+          --disable-all \
+          --enable-bcmath \
+          --enable-mbstring \
+          --enable-json \
+          --enable-session \
+          --enable-shmop \
+          --enable-sockets \
+          --enable-sysvmsg \
+          --enable-sysvsem \
+          --enable-sysvshm \
+          --enable-dom \
+          --enable-simplexml \
+          --enable-xml \
+          --enable-xmlreader \
+          --enable-xmlwriter \
+          --enable-phar \
+          --enable-posix \
+          --enable-tokenizer \
+          --with-libxml \
+          --with-zlib \
+          --with-curl \
+          --without-pear \
+          --with-openssl \
+          --with-password-argon2 \
+          --with-sodium \
+          --without-iconv \
+          --without-pcre-jit \
+          --disable-cgi \
+          --disable-fpm \
+          --disable-mbregex \
+          CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$SYSROOT/usr/include" \
+          LDFLAGS="-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$SYSROOT/usr/lib -llog -landroid -fPIE -pie" \
+          CPPFLAGS="-I$SYSROOT/usr/include" \
+          LIBS="-lcurl -lssl -lcrypto -lz -ldl"
+
+    - name: Build PHP
+      working-directory: ${{ env.WORKDIR }}
+      run: |
+        make -j$(nproc)
+        make install INSTALL_ROOT=$(pwd)/../${{ env.OUTDIR }}
+
+    - name: Post-install steps
+      run: |
+        cp ${{ env.PHP_SOURCE }}/php.ini-development ${{ env.OUTDIR }}/php/lib/php.ini
+        sed -i 's/;date.timezone =/date.timezone = UTC/' ${{ env.OUTDIR }}/php/lib/php.ini
+        sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/' ${{ env.OUTDIR }}/php/lib/php.ini
+
+    - name: Strip binaries
+      run: |
+        arm-linux-androideabi-strip --strip-unneeded ${{ env.OUTDIR }}/php/bin/php
+        find ${{ env.OUTDIR }}/php/lib/php/extensions -name "*.so" -exec arm-linux-androideabi-strip --strip-unneeded {} \;
+
+    - name: Verify binary
+      run: |
+        file ${{ env.OUTDIR }}/php/bin/php
+        readelf -h ${{ env.OUTDIR }}/php/bin/php | grep 'Machine:'
+
+    - name: Package artifacts
+      run: |
+        tar -czf php-arm32-android.tar.gz -C ${{ env.OUTDIR }} .
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: php-arm32-android
+        path: php-arm32-android.tar.gz
