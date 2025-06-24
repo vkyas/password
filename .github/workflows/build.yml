@@ -178,7 +178,7 @@ jobs:
           --prefix=/data/php \
           --with-libxml \
           --with-zlib \
-          --with-iconv-dir=${PREFIX} \
+          --with-iconv=${PREFIX} \
           --with-gd \
           --with-jpeg-dir=${PREFIX} \
           --with-png-dir=${PREFIX} \
@@ -225,8 +225,11 @@ jobs:
     - name: 🧪 Check Makefile existence
       working-directory: ${{ env.WORKDIR }}
       run: |
-        echo "List files in build directory:"
-        ls -la
+        if [ ! -f Makefile ]; then
+          echo "::error ::Makefile not found! Showing last 50 lines of config.log:"
+          tail -n 50 config.log
+        exit 1
+        fi
         
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
