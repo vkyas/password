@@ -1,4 +1,4 @@
-name: 🛠️ Build PHP for ARMv7a Android (Full Extensions)
+name: Build
 
 on:
   workflow_dispatch:
