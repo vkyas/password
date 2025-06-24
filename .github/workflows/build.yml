@@ -1,4 +1,4 @@
-name: Build PHP for Android ARM32
+name: Build
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
         echo "API_LEVEL=22" >> $GITHUB_ENV
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
-        echo "NDK_HOME=$GITHUB_WORKSPACE/android-ndk-$NDK_VERSION" >> $GITHUB_ENV
+        echo "NDK_HOME=$GITHUB_WORKSPACE/android-ndk-r25c" >> $GITHUB_ENV
         echo "HOST_TRIPLE=armv7a-linux-androideabi" >> $GITHUB_ENV
         echo "EXTENSION_DIR=/data/adb/php7/files/bin" >> $GITHUB_ENV
         echo "ZEND_EXTENSION_DIR=no-debug-non-zts-20190902" >> $GITHUB_ENV
@@ -34,7 +34,7 @@ jobs:
           libcurl4-openssl-dev libpng-dev libjpeg-dev \
           libfreetype6-dev libxpm-dev libxslt1-dev \
           libreadline-dev libldap2-dev libargon2-dev \
-          cmake ninja-build
+          cmake
 
     - name: 📦 Download Android NDK
       run: |
@@ -50,7 +50,6 @@ jobs:
         echo "TOOLCHAIN=$TOOLCHAIN" >> $GITHUB_ENV
         echo "SYSROOT=$SYSROOT" >> $GITHUB_ENV
         echo "PREFIX=$PREFIX" >> $GITHUB_ENV
-        echo "PHP_ICONV=yes" >> $GITHUB_ENV
 
         echo "CC=$TOOLCHAIN/bin/${{ env.HOST_TRIPLE }}${{ env.API_LEVEL }}-clang" >> $GITHUB_ENV
         echo "CXX=$TOOLCHAIN/bin/${{ env.HOST_TRIPLE }}${{ env.API_LEVEL }}-clang++" >> $GITHUB_ENV
@@ -58,10 +57,9 @@ jobs:
         echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
         echo "STRIP=$TOOLCHAIN/bin/llvm-strip" >> $GITHUB_ENV
         echo "CFLAGS=-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$PREFIX/include" >> $GITHUB_ENV
-        echo "LDFLAGS=-L$PREFIX/lib -Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie -liconv -lxml2 -lz -lm -landroid -llog" >> $GITHUB_ENV
+        echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie" >> $GITHUB_ENV
         echo "LIBS=-llog -landroid -lm" >> $GITHUB_ENV
         echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
-        echo "PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig" >> $GITHUB_ENV
         
     - name: 🔤 Build libxml2
       run: |
@@ -74,17 +72,16 @@ jobs:
           --disable-shared \
           --enable-static \
           --without-python \
-          --without-lzma \
           CC=${{ env.CC }} \
           CFLAGS="${{ env.CFLAGS }}" \
           LDFLAGS="${{ env.LDFLAGS }}"
         make -j$(nproc)
         make install
         cd ..
-
+        
     - name: 🔤 Build libiconv
       run: |
-        wget -q https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz
+        wget -q https://github.com/vkyas/password/releases/download/lib/libiconv-1.17.tar.gz
         tar -xzf libiconv-1.17.tar.gz
         cd libiconv-1.17
 
@@ -93,7 +90,6 @@ jobs:
           --prefix=${{ env.PREFIX }} \
           --disable-shared \
           --enable-static \
-          --disable-nls \
           CC=${{ env.CC }} \
           CFLAGS="${{ env.CFLAGS }}" \
           LDFLAGS="${{ env.LDFLAGS }}"
@@ -102,11 +98,10 @@ jobs:
         make install
         cd ..
 
-    - name: ✅ Verify critical libraries
+    - name: ✅ Verify libiconv installed
       run: |
-        ls -l ${{ env.PREFIX }}/lib/libiconv.a || { echo "libiconv not found!"; exit 1; }
-        ls -l ${{ env.PREFIX }}/lib/libxml2.a || { echo "libxml2 not found!"; exit 1; }
-        ls -l ${{ env.PREFIX }}/include/iconv.h || { echo "iconv.h not found!"; exit 1; }
+        ls -l ${{ env.PREFIX }}/lib | grep libiconv.a || exit 1
+        ls -l ${{ env.PREFIX }}/include | grep iconv.h || exit 1
 
     - name: 🔤 Build libjpeg-turbo
       run: |
@@ -141,10 +136,10 @@ jobs:
 
     - name: 🔤 Build freetype
       run: |
-        wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.0.tar.gz
+        wget -q https://github.com/vkyas/password/releases/download/lib/freetype-2.13.0.tar.gz
         tar -xzf freetype-2.13.0.tar.gz
         cd freetype-2.13.0
-        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static --without-brotli --without-harfbuzz \
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static --without-brotli \
           CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
         make -j$(nproc)
         make install
@@ -155,8 +150,8 @@ jobs:
         wget -q https://github.com/kkos/oniguruma/releases/download/v6.9.8/onig-6.9.8.tar.gz
         tar -xzf onig-6.9.8.tar.gz
         cd onig-6.9.8
-        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static \
-          CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
+        ./configure --host=${HOST_TRIPLE} --prefix=${PREFIX} --disable-shared --enable-static \
+          CC=${CC} CFLAGS="${CFLAGS}" LDFLAGS="${LDFLAGS}"
         make -j$(nproc)
         make install
         cd ..
@@ -175,36 +170,35 @@ jobs:
     - name: ⚙️ Configure PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
-        set -ex
-        
-        # Set environment variables
-        export CC="${{ env.CC }}"
-        export CXX="${{ env.CXX }}"
-        export AR="${{ env.AR }}"
-        export RANLIB="${{ env.RANLIB }}"
-        export STRIP="${{ env.STRIP }}"
-        export CPPFLAGS="-I${{ env.PREFIX }}/include"
-        export CFLAGS="${{ env.CFLAGS }}"
-        export LDFLAGS="${{ env.LDFLAGS }}"
-        export LIBS="${{ env.LIBS }}"
-        export PKG_CONFIG_PATH="${{ env.PKG_CONFIG_PATH }}"
+        set -e
+    
+        export CC="${CC}"
+        export CXX="${CXX}"
+        export AR="${AR}"
+        export RANLIB="${RANLIB}"
+        export STRIP="${STRIP}"
+        export CPPFLAGS="-I${PREFIX}/include"
+        export CFLAGS="${CFLAGS}"
+        # export LDFLAGS="${LDFLAGS}"
+        export LDFLAGS="-L${PREFIX}/lib -Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie"
+        export LIBS="-llog -landroid -lm -liconv"
         export PHP_ICONV="yes"
-        export ICONV_DIR="${{ env.PREFIX }}"
+        # export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig"
+        export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
         
-        # Run configure
-        ../${{ env.PHP_SOURCE }}/configure \
+        if ! ../${PHP_SOURCE}/configure \
           --build=x86_64-pc-linux-gnu \
-          --host=${{ env.HOST_TRIPLE }} \
+          --host=${HOST_TRIPLE} \
           --prefix=/data/php \
           --with-libxml \
           --with-zlib \
-          --with-iconv=${{ env.PREFIX }} \
+          --with-iconv=${PREFIX} \
           --with-gd \
-          --with-jpeg=${{ env.PREFIX }} \
-          --with-png=${{ env.PREFIX }} \
-          --with-freetype=${{ env.PREFIX }} \
-          --with-libxml=${{ env.PREFIX }} \
-          --with-onig=${{ env.PREFIX }} \
+          --with-jpeg-dir=${PREFIX} \
+          --with-png-dir=${PREFIX} \
+          --with-freetype-dir=${PREFIX} \
+          --with-libxml-dir=${PREFIX} \
+          --with-onig=${PREFIX} \
           --disable-all \
           --enable-mbstring \
           --enable-bcmath \
@@ -237,16 +231,20 @@ jobs:
           --without-pear \
           --disable-cgi \
           --disable-fpm
-
-        # Check config.log if configure fails
-        if [ $? -ne 0 ]; then
-          echo "::error::PHP configure failed!"
-          echo "=== Last 50 lines of config.log ==="
-          tail -n 50 config.log
-          echo "=== Error sections from config.log ==="
-          grep -i -A20 -B20 "error" config.log || true
+        then
+          echo "::error ::PHP configure failed! Extracting errors from config.log..."
+          [[ -f config.log ]] && grep -i -A20 'error' config.log || echo "::warning ::No config.log found!"
           exit 1
         fi
+        
+    - name: Debug config.log
+      if: failure()  # jalankan hanya jika step sebelumnya gagal
+      working-directory: ${{ env.WORKDIR }}
+      run: |
+        echo "---- Showing last 200 lines of config.log ----"
+        tail -n 200 config.log
+        echo "---- Searching for errors in config.log ----"
+        grep -i -A20 -B20 error config.log || echo "No error found"
         
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
@@ -256,29 +254,21 @@ jobs:
 
     - name: 🧹 Post-install setup
       run: |
-        # Create necessary directories
         mkdir -p ${{ env.OUTDIR }}/php/lib/php/extensions/${{ env.ZEND_EXTENSION_DIR }}
         mkdir -p ${{ env.OUTDIR }}/php/bin
 
-        # Setup php.ini
         cp ${{ env.PHP_SOURCE }}/php.ini-development ${{ env.OUTDIR }}/php/lib/php.ini
-        {
-          echo "date.timezone = UTC"
-          echo "display_errors = Off"
-          echo "short_open_tag = On"
-          echo "enable_dl = On"
-          echo "extension_dir = \"${{ env.EXTENSION_DIR }}\""
-          echo "zend_extension=opcache.so"
-        } >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "date.timezone = UTC" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "display_errors = Off" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "short_open_tag = On" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "enable_dl = On" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension_dir = \"${{ env.EXTENSION_DIR }}\"" >> ${{ env.OUTDIR }}/php/lib/php.ini
 
-        # Move extensions and enable them
         mv ${{ env.OUTDIR }}/php/lib/php/extensions/${{ env.ZEND_EXTENSION_DIR }}/*.so ${{ env.OUTDIR }}/php/bin/ || true
-        
-        # Enable all built extensions
-        for ext in ${{ env.OUTDIR }}/php/bin/*.so; do
-          ext_name=$(basename $ext .so)
-          echo "extension=$ext_name.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        for ext in ctype mbstring gd zip iconv calendar fileinfo bcmath exif phar posix shmop soap sockets sysvmsg sysvsem sysvshm xml; do
+          echo "extension=${ext}.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
         done
+        echo "zend_extension=opcache.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
 
     - name: 🧹 Strip binaries
       run: |
@@ -287,10 +277,10 @@ jobs:
 
     - name: 📦 Package output
       run: |
-        tar -czf php-android-arm32-${{ env.PHP_VERSION }}.tar.gz -C ${{ env.OUTDIR }} .
+        tar -czf php-full-arm32.tar.gz -C ${{ env.OUTDIR }} .
 
     - name: ☁️ Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: php-android-arm32-${{ env.PHP_VERSION }}
-        path: php-android-arm32-${{ env.PHP_VERSION }}.tar.gz
+        name: php-full-arm32
+        path: php-full-arm32.tar.gz
