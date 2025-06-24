@@ -1,4 +1,4 @@
-name: Build
+name: 🛠️ Build PHP 8.4.8 for ARMv7 Android (Full Extensions)
 
 on:
   workflow_dispatch:
@@ -7,39 +7,35 @@ jobs:
   build:
     runs-on: ubuntu-24.04
 
+    env:
+      NDK_VERSION: r25c
+      PHP_VERSION: 8.4.8
+      API_LEVEL: 22
+      WORKDIR: build-arm32
+      OUTDIR: output-arm32
+      HOST_TRIPLE: armv7a-linux-androideabi
+
     steps:
     - name: 📥 Checkout repo
       uses: actions/checkout@v4
 
     - name: ⚙️ Setup environment variables
       run: |
-        echo "NDK_VERSION=r25c" >> $GITHUB_ENV
-        echo "PHP_VERSION=8.4.8" >> $GITHUB_ENV
-        echo "API_LEVEL=22" >> $GITHUB_ENV
-        echo "WORKDIR=build-arm32" >> $GITHUB_ENV
-        echo "OUTDIR=output-arm32" >> $GITHUB_ENV
-        echo "NDK_HOME=$GITHUB_WORKSPACE/android-ndk-r25c" >> $GITHUB_ENV
-        echo "HOST_TRIPLE=armv7a-linux-androideabi" >> $GITHUB_ENV
-        echo "EXTENSION_DIR=/data/adb/php7/files/bin" >> $GITHUB_ENV
-        echo "ZEND_EXTENSION_DIR=no-debug-non-zts-20190902" >> $GITHUB_ENV
+        echo "NDK_HOME=$GITHUB_WORKSPACE/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+        echo "PREFIX=$GITHUB_WORKSPACE/${{ env.WORKDIR }}/sysroot/usr" >> $GITHUB_ENV
+
+    - name: 🛠️ Download and unzip Android NDK
+      run: |
+        wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
 
     - name: 🧰 Install build dependencies
       run: |
         sudo apt update
-        sudo apt install -y \
-          autoconf automake libtool pkg-config \
-          bison re2c make wget unzip file \
-          python3 zlib1g-dev libxml2-dev libsqlite3-dev \
-          libonig-dev libzip-dev libssl-dev \
-          libcurl4-openssl-dev libpng-dev libjpeg-dev \
-          libfreetype6-dev libxpm-dev libxslt1-dev \
-          libreadline-dev libldap2-dev libargon2-dev \
-          cmake
-
-    - name: 📦 Download Android NDK
-      run: |
-        wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
-        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        sudo apt install -y autoconf automake libtool pkg-config bison re2c make wget unzip file \
+          python3 zlib1g-dev libxml2-dev libsqlite3-dev libonig-dev libzip-dev libssl-dev \
+          libcurl4-openssl-dev libpng-dev libjpeg-dev libfreetype6-dev libxpm-dev libxslt1-dev \
+          libreadline-dev libldap2-dev libargon2-dev cmake
 
     - name: 🛠️ Setup toolchain environment
       run: |
@@ -57,51 +53,31 @@ jobs:
         echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
         echo "STRIP=$TOOLCHAIN/bin/llvm-strip" >> $GITHUB_ENV
         echo "CFLAGS=-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$PREFIX/include" >> $GITHUB_ENV
-        echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie" >> $GITHUB_ENV
-        echo "LIBS=-llog -landroid -lm" >> $GITHUB_ENV
+        echo "LDFLAGS=-L$PREFIX/lib -Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie" >> $GITHUB_ENV
+        echo "LIBS=-llog -landroid -lm -liconv" >> $GITHUB_ENV
         echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
-        
+
     - name: 🔤 Build libxml2
       run: |
         wget -q https://download.gnome.org/sources/libxml2/2.10/libxml2-2.10.3.tar.xz
         tar -xf libxml2-2.10.3.tar.xz
         cd libxml2-2.10.3
-        ./configure \
-          --host=${{ env.HOST_TRIPLE }} \
-          --prefix=${{ env.PREFIX }} \
-          --disable-shared \
-          --enable-static \
-          --without-python \
-          CC=${{ env.CC }} \
-          CFLAGS="${{ env.CFLAGS }}" \
-          LDFLAGS="${{ env.LDFLAGS }}"
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static \
+          CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
         make -j$(nproc)
         make install
         cd ..
-        
+
     - name: 🔤 Build libiconv
       run: |
-        wget -q https://github.com/vkyas/password/releases/download/lib/libiconv-1.17.tar.gz
+        wget -q https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz
         tar -xzf libiconv-1.17.tar.gz
         cd libiconv-1.17
-
-        ./configure \
-          --host=${{ env.HOST_TRIPLE }} \
-          --prefix=${{ env.PREFIX }} \
-          --disable-shared \
-          --enable-static \
-          CC=${{ env.CC }} \
-          CFLAGS="${{ env.CFLAGS }}" \
-          LDFLAGS="${{ env.LDFLAGS }}"
-
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static \
+          CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
         make -j$(nproc)
         make install
         cd ..
-
-    - name: ✅ Verify libiconv installed
-      run: |
-        ls -l ${{ env.PREFIX }}/lib | grep libiconv.a || exit 1
-        ls -l ${{ env.PREFIX }}/include | grep iconv.h || exit 1
 
     - name: 🔤 Build libjpeg-turbo
       run: |
@@ -109,8 +85,7 @@ jobs:
         tar -xzf libjpeg-turbo-2.1.5.tar.gz
         cd libjpeg-turbo-2.1.5
         mkdir build && cd build
-        cmake .. \
-          -DCMAKE_SYSTEM_NAME=Android \
+        cmake .. -DCMAKE_SYSTEM_NAME=Android \
           -DCMAKE_SYSTEM_VERSION=${{ env.API_LEVEL }} \
           -DCMAKE_ANDROID_ARCH_ABI=armeabi-v7a \
           -DCMAKE_ANDROID_NDK=${{ env.NDK_HOME }} \
@@ -136,7 +111,7 @@ jobs:
 
     - name: 🔤 Build freetype
       run: |
-        wget -q https://github.com/vkyas/password/releases/download/lib/freetype-2.13.0.tar.gz
+        wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.0.tar.gz
         tar -xzf freetype-2.13.0.tar.gz
         cd freetype-2.13.0
         ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static --without-brotli \
@@ -144,14 +119,14 @@ jobs:
         make -j$(nproc)
         make install
         cd ..
-        
+
     - name: 🔤 Build Oniguruma
       run: |
         wget -q https://github.com/kkos/oniguruma/releases/download/v6.9.8/onig-6.9.8.tar.gz
         tar -xzf onig-6.9.8.tar.gz
         cd onig-6.9.8
-        ./configure --host=${HOST_TRIPLE} --prefix=${PREFIX} --disable-shared --enable-static \
-          CC=${CC} CFLAGS="${CFLAGS}" LDFLAGS="${LDFLAGS}"
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static \
+          CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
         make -j$(nproc)
         make install
         cd ..
@@ -171,31 +146,27 @@ jobs:
       working-directory: ${{ env.WORKDIR }}
       run: |
         set -e
-    
-        export CC="${CC}"
-        export CXX="${CXX}"
-        export AR="${AR}"
-        export RANLIB="${RANLIB}"
-        export STRIP="${STRIP}"
-        export CPPFLAGS="-I${PREFIX}/include"
-        export CFLAGS="${CFLAGS}"
-        export LDFLAGS="-L${PREFIX}/lib -Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie"
+
+        export CC="${{ env.TOOLCHAIN }}/bin/${{ env.HOST_TRIPLE }}${{ env.API_LEVEL }}-clang"
+        export CXX="${{ env.TOOLCHAIN }}/bin/${{ env.HOST_TRIPLE }}${{ env.API_LEVEL }}-clang++"
+        export AR="${{ env.TOOLCHAIN }}/bin/llvm-ar"
+        export RANLIB="${{ env.TOOLCHAIN }}/bin/llvm-ranlib"
+        export STRIP="${{ env.TOOLCHAIN }}/bin/llvm-strip"
+        export CPPFLAGS="-I${{ env.PREFIX }}/include"
+        export CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I${{ env.PREFIX }}/include"
+        export LDFLAGS="-L${{ env.PREFIX }}/lib -Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie"
         export LIBS="-llog -landroid -lm -liconv"
-        export PHP_ICONV="yes"
-        export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-    
+        export PKG_CONFIG_PATH="${{ env.PREFIX }}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+
         if ! ../${PHP_SOURCE}/configure \
           --build=x86_64-pc-linux-gnu \
-          --host=${HOST_TRIPLE} \
+          --host=${{ env.HOST_TRIPLE }} \
           --prefix=/data/php \
           --with-libxml \
           --with-zlib \
-          --with-iconv=${PREFIX} \
+          --with-iconv=${{ env.PREFIX }} \
           --with-gd \
-          --with-jpeg=${PREFIX} \
-          --with-png=${PREFIX} \
-          --with-freetype=${PREFIX} \
-          --with-oniguruma=${PREFIX} \
+          --with-onig \
           --disable-all \
           --disable-dns \
           --enable-mbstring \
@@ -235,16 +206,7 @@ jobs:
           [[ -f config.log ]] && grep -i -A20 'error' config.log || echo "::warning ::No config.log found!"
           exit 1
         fi
-        
-    - name: Debug config.log
-      if: failure()  # jalankan hanya jika step sebelumnya gagal
-      working-directory: ${{ env.WORKDIR }}
-      run: |
-        echo "---- Showing last 200 lines of config.log ----"
-        tail -n 200 config.log
-        echo "---- Searching for errors in config.log ----"
-        grep -i -A20 -B20 error config.log || echo "No error found"
-        
+
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
@@ -253,17 +215,19 @@ jobs:
 
     - name: 🧹 Post-install setup
       run: |
-        mkdir -p ${{ env.OUTDIR }}/php/lib/php/extensions/${{ env.ZEND_EXTENSION_DIR }}
+        mkdir -p ${{ env.OUTDIR }}/php/lib/php/extensions/no-debug-non-zts-20190902
         mkdir -p ${{ env.OUTDIR }}/php/bin
 
-        cp ${{ env.PHP_SOURCE }}/php.ini-development ${{ env.OUTDIR }}/php/lib/php.ini
+        cp ../${{ env.PHP_SOURCE }}/php.ini-development ${{ env.OUTDIR }}/php/lib/php.ini
         echo "date.timezone = UTC" >> ${{ env.OUTDIR }}/php/lib/php.ini
         echo "display_errors = Off" >> ${{ env.OUTDIR }}/php/lib/php.ini
         echo "short_open_tag = On" >> ${{ env.OUTDIR }}/php/lib/php.ini
         echo "enable_dl = On" >> ${{ env.OUTDIR }}/php/lib/php.ini
-        echo "extension_dir = \"${{ env.EXTENSION_DIR }}\"" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension_dir = \"/data/adb/php7/files/bin\"" >> ${{ env.OUTDIR }}/php/lib/php.ini
 
-        mv ${{ env.OUTDIR }}/php/lib/php/extensions/${{ env.ZEND_EXTENSION_DIR }}/*.so ${{ env.OUTDIR }}/php/bin/ || true
+        # Pindahkan semua ekstensi .so ke bin
+        mv ${{ env.OUTDIR }}/php/lib/php/extensions/no-debug-non-zts-20190902/*.so ${{ env.OUTDIR }}/php/bin/ || true
+
         for ext in ctype mbstring gd zip iconv calendar fileinfo bcmath exif phar posix shmop soap sockets sysvmsg sysvsem sysvshm xml; do
           echo "extension=${ext}.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
         done
@@ -271,15 +235,15 @@ jobs:
 
     - name: 🧹 Strip binaries
       run: |
-        ${{ env.STRIP }} --strip-unneeded ${{ env.OUTDIR }}/php/bin/php || true
-        find ${{ env.OUTDIR }}/php/bin/ -name "*.so" -exec ${{ env.STRIP }} --strip-unneeded {} \; || true
+        ${{ env.TOOLCHAIN }}/bin/llvm-strip --strip-unneeded ${{ env.OUTDIR }}/php/bin/php || true
+        find ${{ env.OUTDIR }}/php/bin/ -name "*.so" -exec ${{ env.TOOLCHAIN }}/bin/llvm-strip --strip-unneeded {} \; || true
 
     - name: 📦 Package output
       run: |
-        tar -czf php-full-arm32.tar.gz -C ${{ env.OUTDIR }} .
+        tar -czf php-arm32-full.tar.gz -C ${{ env.OUTDIR }} .
 
     - name: ☁️ Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: php-full-arm32
-        path: php-full-arm32.tar.gz
+        name: php-arm32-full
+        path: php-arm32-full.tar.gz
