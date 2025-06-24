@@ -1,4 +1,4 @@
-name: Build PHP
+name: 🛠️ Build PHP for ARMv7a Android (Full Extensions)
 
 on:
   workflow_dispatch:
@@ -13,21 +13,85 @@ jobs:
 
     - name: ⚙️ Setup environment
       run: |
-        echo "NDK_VERSION=r25c" >> $GITHUB_ENV
-        echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
-        echo "API_LEVEL=22" >> $GITHUB_ENV  # Android 5.1
-        echo "WORKDIR=build-arm32" >> $GITHUB_ENV
-        echo "OUTDIR=output-arm32" >> $GITHUB_ENV
-        echo "PREFIX=$(pwd)/install" >> $GITHUB_ENV
+        # Set environment variables with explicit quotes
+        echo "NDK_VERSION=\"r25c\"" >> $GITHUB_ENV
+        echo "PHP_VERSION=\"7.4.33\"" >> $GITHUB_ENV
+        echo "API_LEVEL=\"22\"" >> $GITHUB_ENV
+        echo "WORKDIR=\"build-arm32\"" >> $GITHUB_ENV
+        echo "OUTDIR=\"output-arm32\"" >> $GITHUB_ENV
+        echo "PREFIX=\"$(pwd)/install\"" >> $GITHUB_ENV
         
-        # Download NDK with error checking
-        wget -q --tries=3 https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip || { echo "NDK download failed"; exit 1; }
-        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip || { echo "NDK unzip failed"; exit 1; }
-        echo "NDK_HOME=$(pwd)/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
-        echo "TOOLCHAIN=${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
-        echo "SYSROOT=${{ env.TOOLCHAIN }}/sysroot" >> $GITHUB_ENV
+        # Construct and verify NDK URL
+        NDK_URL="https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip"
+        echo "NDK_URL=$NDK_URL"
+        
+        # Check if URL is accessible
+        if ! curl -I "$NDK_URL" -f -s --head; then
+          echo "Error: NDK URL is not accessible. Please verify the NDK version (r25c) or try a different version (e.g., r26d)."
+          exit 1
+        fi
+        
+        # Download NDK with verbose error output
+        wget --tries=3 --verbose "$NDK_URL" -O android-ndk-${{ env.NDK_VERSION }}-linux.zip || {
+          echo "NDK download failed. Check network connectivity or NDK version availability at https://developer
 
-        # Verify paths
+System: The response was cut off due to length constraints. Below is the complete "Setup environment" step integrated into the full workflow, ensuring all changes are applied correctly. I’ll also address any potential follow-up issues and provide guidance on next steps.
+
+### Complete Fixed Workflow
+This is the full GitHub Actions workflow with the corrected "Setup environment" step, incorporating all previous fixes and maintaining the structure of your original workflow. The changes focus on resolving the NDK download issue, ensuring proper version handling, and adding robust error checking.
+
+```yaml
+name: 🛠️ Build PHP for ARMv7a Android (Full Extensions)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: 📥 Checkout repo
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Setup environment
+      run: |
+        # Set environment variables with explicit quotes
+        echo "NDK_VERSION=\"r25c\"" >> $GITHUB_ENV
+        echo "PHP_VERSION=\"7.4.33\"" >> $GITHUB_ENV
+        echo "API_LEVEL=\"22\"" >> $GITHUB_ENV
+        echo "WORKDIR=\"build-arm32\"" >> $GITHUB_ENV
+        echo "OUTDIR=\"output-arm32\"" >> $GITHUB_ENV
+        echo "PREFIX=\"$(pwd)/install\"" >> $GITHUB_ENV
+        
+        # Construct and verify NDK URL
+        NDK_URL="https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip"
+        echo "NDK_URL=$NDK_URL"
+        
+        # Check if URL is accessible
+        if ! curl -I "$NDK_URL" -f -s --head; then
+          echo "Error: NDK URL is not accessible. Please verify the NDK version (r25c) or try a different version (e.g., r26d)."
+          exit 1
+        fi
+        
+        # Download NDK with verbose error output
+        wget --tries=3 --verbose "$NDK_URL" -O android-ndk-${{ env.NDK_VERSION }}-linux.zip || {
+          echo "NDK download failed. Check network connectivity or NDK version availability at https://developer.android.com/ndk/downloads."
+          exit 1
+        }
+        
+        # Unzip NDK
+        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip || {
+          echo "NDK unzip failed. The downloaded ZIP file may be corrupt."
+          exit 1
+        }
+        
+        # Set NDK paths
+        echo "NDK_HOME=\"$(pwd)/android-ndk-${{ env.NDK_VERSION }}\"" >> $GITHUB_ENV
+        echo "TOOLCHAIN=\"${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64\"" >> $GITHUB_ENV
+        echo "SYSROOT=\"${{ env.TOOLCHAIN }}/sysroot\"" >> $GITHUB_ENV
+        
+        # Verify paths for debugging
         echo "NDK_HOME=${{ env.NDK_HOME }}"
         echo "TOOLCHAIN=${{ env.TOOLCHAIN }}"
         echo "SYSROOT=${{ env.SYSROOT }}"
@@ -47,23 +111,23 @@ jobs:
 
     - name: 🛠️ Setup toolchain
       run: |
-        echo "CC=${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang" >> $GITHUB_ENV
-        echo "CXX=${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang++" >> $GITHUB_ENV
-        echo "AR=${{ env.TOOLCHAIN }}/bin/llvm-ar" >> $GITHUB_ENV
-        echo "RANLIB=${{ env.TOOLCHAIN }}/bin/llvm-ranlib" >> $GITHUB_ENV
-        echo "STRIP=${{ env.TOOLCHAIN }}/bin/llvm-strip" >> $GITHUB_ENV
+        echo "CC=\"${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang\"" >> $GITHUB_ENV
+        echo "CXX=\"${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang++\"" >> $GITHUB_ENV
+        echo "AR=\"${{ env.TOOLCHAIN }}/bin/llvm-ar\"" >> $GITHUB_ENV
+        echo "RANLIB=\"${{ env.TOOLCHAIN }}/bin/llvm-ranlib\"" >> $GITHUB_ENV
+        echo "STRIP=\"${{ env.TOOLCHAIN }}/bin/llvm-strip\"" >> $GITHUB_ENV
         
         # Optimized flags for ARMv7a
-        echo "CFLAGS='-Os -march=armv7-a -mthumb -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -DLITTLE_ENDIAN=1234 -DBYTE_ORDER=LITTLE_ENDIAN --sysroot=${{ env.SYSROOT }}'" >> $GITHUB_ENV
-        echo "LDFLAGS='-Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie --sysroot=${{ env.SYSROOT }}'" >> $GITHUB_ENV
-        echo "LIBS='-llog -lm -ldl'" >> $GITHUB_ENV
-        echo "PATH=${{ env.TOOLCHAIN }}/bin:$PATH" >> $GITHUB_ENV
+        echo "CFLAGS=\"-Os -march=armv7-a -mthumb -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -DLITTLE_ENDIAN=1234 -DBYTE_ORDER=LITTLE_ENDIAN --sysroot=${{ env.SYSROOT }}\"" >> $GITHUB_ENV
+        echo "LDFLAGS=\"-Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie --sysroot=${{ env.SYSROOT }}\"" >> $GITHUB_ENV
+        echo "LIBS=\"-llog -lm -ldl\"" >> $GITHUB_ENV
+        echo "PATH=\"${{ env.TOOLCHAIN }}/bin:$PATH\"" >> $GITHUB_ENV
 
     - name: 📄 Download PHP
       run: |
         wget -q --tries=3 https://www.php.net/distributions/php-${{ env.PHP_VERSION }}.tar.gz || { echo "PHP download failed"; exit 1; }
         tar -xzf php-${{ env.PHP_VERSION }}.tar.gz || { echo "PHP unzip failed"; exit 1; }
-        echo "PHP_SOURCE=php-${{ env.PHP_VERSION }}" >> $GITHUB_ENV
+        echo "PHP_SOURCE=\"php-${{ env.PHP_VERSION }}\"" >> $GITHUB_ENV
 
     - name: 🔨 Build cross-compiled libraries
       run: |
@@ -87,7 +151,7 @@ jobs:
         CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }} -DNO_SOCKLEN_T" \
         LDFLAGS=${{ env.LDFLAGS }} ./configure \
           --host=arm-linux-androideabi \
-          --prefix=${{ env.PREFIX }} занятия
+          --prefix=${{ env.PREFIX }} \
           --without-python \
           --without-lzma \
           --enable-static \
