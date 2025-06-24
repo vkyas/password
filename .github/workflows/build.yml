@@ -1,4 +1,4 @@
-name: 🛠️ Build PHP for ARMv7a Android (Final Fixed)
+name: 🛠️ Build PHP for ARMv7a Android (Final Fixed & Clean)
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ jobs:
     - name: 📥 Checkout repo
       uses: actions/checkout@v4
 
-    - name: ⚙️ Setup environment
+    - name: ⚙️ Setup environment variables
       run: |
         echo "NDK_VERSION=r25c" >> $GITHUB_ENV
         echo "PHP_VERSION=8.4.8" >> $GITHUB_ENV
@@ -23,7 +23,7 @@ jobs:
         echo "EXTENSION_DIR=/data/adb/php7/files/bin" >> $GITHUB_ENV
         echo "ZEND_EXTENSION_DIR=no-debug-non-zts-20190902" >> $GITHUB_ENV
 
-    - name: 🧰 Install dependencies
+    - name: 🧰 Install build dependencies
       run: |
         sudo apt update
         sudo apt install -y \
@@ -33,14 +33,15 @@ jobs:
           libonig-dev libzip-dev libssl-dev \
           libcurl4-openssl-dev libpng-dev libjpeg-dev \
           libfreetype6-dev libxpm-dev libxslt1-dev \
-          libreadline-dev libldap2-dev libargon2-dev
+          libreadline-dev libldap2-dev libargon2-dev \
+          cmake
 
     - name: 📦 Download Android NDK
       run: |
         wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
         unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
 
-    - name: 🛠️ Setup toolchain
+    - name: 🛠️ Setup toolchain environment
       run: |
         TOOLCHAIN="${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64"
         SYSROOT="$TOOLCHAIN/sysroot"
@@ -55,10 +56,10 @@ jobs:
         echo "AR=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
         echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
         echo "STRIP=$TOOLCHAIN/bin/llvm-strip" >> $GITHUB_ENV
-        echo CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$PREFIX/include" >> $GITHUB_ENV
-        echo LDFLAGS="-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie" >> $GITHUB_ENV
-        echo LIBS="-llog -landroid -lm" >> $GITHUB_ENV
-        echo PATH=$TOOLCHAIN/bin:$PATH >> $GITHUB_ENV
+        echo "CFLAGS=-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$PREFIX/include" >> $GITHUB_ENV
+        echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie" >> $GITHUB_ENV
+        echo "LIBS=-llog -landroid -lm" >> $GITHUB_ENV
+        echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
 
     - name: 🔤 Build libiconv
       run: |
@@ -77,17 +78,57 @@ jobs:
 
         make -j$(nproc)
         make install
+        cd ..
 
-        ls -lh ${{ env.PREFIX }}/lib/libiconv.a
-        ls -lh ${{ env.PREFIX }}/include/iconv.h
-        
-    - name: 📄 Download PHP
+    - name: 🔤 Build libjpeg-turbo
+      run: |
+        wget -q https://downloads.sourceforge.net/libjpeg-turbo/libjpeg-turbo-2.1.5.tar.gz
+        tar -xzf libjpeg-turbo-2.1.5.tar.gz
+        cd libjpeg-turbo-2.1.5
+        mkdir build && cd build
+        cmake .. \
+          -DCMAKE_SYSTEM_NAME=Android \
+          -DCMAKE_SYSTEM_VERSION=${{ env.API_LEVEL }} \
+          -DCMAKE_ANDROID_ARCH_ABI=armeabi-v7a \
+          -DCMAKE_ANDROID_NDK=${{ env.NDK_HOME }} \
+          -DCMAKE_ANDROID_STL_TYPE=c++_static \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=${{ env.PREFIX }} \
+          -DENABLE_SHARED=OFF \
+          -DENABLE_STATIC=ON
+        make -j$(nproc)
+        make install
+        cd ../..
+
+    - name: 🔤 Build libpng
+      run: |
+        wget -q https://download.sourceforge.net/libpng/libpng-1.6.39.tar.gz
+        tar -xzf libpng-1.6.39.tar.gz
+        cd libpng-1.6.39
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static \
+          CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
+        make -j$(nproc)
+        make install
+        cd ..
+
+    - name: 🔤 Build freetype
+      run: |
+        wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.0.tar.gz
+        tar -xzf freetype-2.13.0.tar.gz
+        cd freetype-2.13.0
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static \
+          CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
+        make -j$(nproc)
+        make install
+        cd ..
+
+    - name: 📄 Download PHP source
       run: |
         wget -q https://www.php.net/distributions/php-${{ env.PHP_VERSION }}.tar.gz
         tar -xzf php-${{ env.PHP_VERSION }}.tar.gz
         echo "PHP_SOURCE=php-${{ env.PHP_VERSION }}" >> $GITHUB_ENV
 
-    - name: 🗂️ Create build directory
+    - name: 🗂️ Prepare build directories
       run: |
         mkdir -p ${{ env.WORKDIR }}
         mkdir -p ${{ env.OUTDIR }}
@@ -107,47 +148,48 @@ jobs:
         export PKG_CONFIG_PATH="${{ env.PREFIX }}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
         ../${{ env.PHP_SOURCE }}/configure \
-        --build=x86_64-pc-linux-gnu \
-        --host=${{ env.HOST_TRIPLE }} \
-        --prefix=/data/php \
-        --with-libxml \
-        --with-zlib \
-        --with-jpeg \
-        --with-png \
-        --with-iconv=${{ env.PREFIX }} \
-        --disable-all \
-        --enable-mbstring \
-        --enable-bcmath \
-        --enable-session \
-        --enable-posix \
-        --enable-sockets \
-        --enable-shmop \
-        --enable-sysvmsg \
-        --enable-sysvsem \
-        --enable-sysvshm \
-        --enable-tokenizer \
-        --enable-xml \
-        --enable-dom \
-        --enable-simplexml \
-        --enable-xmlreader \
-        --enable-xmlwriter \
-        --enable-soap \
-        --enable-phar \
-        --enable-fileinfo \
-        --enable-calendar \
-        --enable-ftp \
-        --enable-exif \
-        --enable-opcache \
-        --enable-ctype \
-        --enable-gd \
-        --without-bz2 \
-        --without-xsl \
-        --without-readline \
-        --without-ldap \
-        --without-pdo-pgsql \
-        --without-pear \
-        --disable-cgi \
-        --disable-fpm
+          --build=x86_64-pc-linux-gnu \
+          --host=${{ env.HOST_TRIPLE }} \
+          --prefix=/data/php \
+          --with-libxml \
+          --with-zlib \
+          --with-iconv=${{ env.PREFIX }} \
+          --with-jpeg-dir=${{ env.PREFIX }} \
+          --with-png-dir=${{ env.PREFIX }} \
+          --with-freetype-dir=${{ env.PREFIX }} \
+          --disable-all \
+          --enable-mbstring \
+          --enable-bcmath \
+          --enable-session \
+          --enable-posix \
+          --enable-sockets \
+          --enable-shmop \
+          --enable-sysvmsg \
+          --enable-sysvsem \
+          --enable-sysvshm \
+          --enable-tokenizer \
+          --enable-xml \
+          --enable-dom \
+          --enable-simplexml \
+          --enable-xmlreader \
+          --enable-xmlwriter \
+          --enable-soap \
+          --enable-phar \
+          --enable-fileinfo \
+          --enable-calendar \
+          --enable-ftp \
+          --enable-exif \
+          --enable-opcache \
+          --enable-ctype \
+          --enable-gd \
+          --without-bz2 \
+          --without-xsl \
+          --without-readline \
+          --without-ldap \
+          --without-pdo-pgsql \
+          --without-pear \
+          --disable-cgi \
+          --disable-fpm
 
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
