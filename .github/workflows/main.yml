@@ -1,119 +1,48 @@
-name: Build PHP for ARM 32-bit
+name: Build for ARM 32-bit
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    name: Build ARM 32-bit
+
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install ARM toolchain and system dependencies
+      - name: Create working directory
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            gcc-arm-linux-gnueabihf \
-            g++-arm-linux-gnueabihf \
-            pkg-config \
-            make \
-            autoconf \
-            automake \
-            libtool \
-            bison \
-            re2c \
-            wget \
-            tar
+          mkdir -p ${{ github.workspace }}/build-arm32
+          cd ${{ github.workspace }}/build-arm32
 
-      - name: Build zlib for ARM
-        run: |
-          wget https://zlib.net/zlib-1.3.1.tar.gz
-          tar -xvzf zlib-1.3.1.tar.gz
-          cd zlib-1.3.1
-          mkdir -p /home/runner/zlib-arm32/lib
-          CC=arm-linux-gnueabihf-gcc \
-          CFLAGS="-Os" \
-          ./configure --prefix=/home/runner/zlib-arm32
-          make -j$(nproc)
-          make install
-
-      - name: Build libxml2 for ARM
-        run: |
-          wget http://xmlsoft.org/sources/libxml2-2.12.6.tar.xz
-          tar -xvf libxml2-2.12.6.tar.xz
-          cd libxml2-2.12.6
-          CC=arm-linux-gnueabihf-gcc \
-          CFLAGS="-Os" \
-          ./configure --host=arm-linux-gnueabihf \
-          --prefix=/home/runner/libxml2-arm32 \
-          --without-python \
-          --without-lzma
-          make -j$(nproc)
-          make install
-
-      - name: Build OpenSSL for ARM
-        run: |
-          wget https://www.openssl.org/source/openssl-3.2.1.tar.gz
-          tar -xvzf openssl-3.2.1.tar.gz
-          cd openssl-3.2.1
-          CC=arm-linux-gnueabihf-gcc \
-          CFLAGS="-Os" \
-          ./Configure linux-armv4 \
-          --prefix=/home/runner/openssl-arm32 \
-          --cross-compile-prefix=arm-linux-gnueabihf-
-          make -j$(nproc)
-          make install_sw
-
-      - name: Download PHP source
-        run: |
-          wget https://www.php.net/distributions/php-8.3.6.tar.gz
-          tar -xvzf php-8.3.6.tar.gz
-          mv php-8.3.6 php-src
-
-      - name: Configure PHP
-        run: |
-          cd php-src
-          ./buildconf --force
-          PKG_CONFIG_PATH=/home/runner/libxml2-arm32/lib/pkgconfig:/home/runner/zlib-arm32/lib/pkgconfig:/home/runner/openssl-arm32/lib/pkgconfig \
-          CC=arm-linux-gnueabihf-gcc \
-          CXX=arm-linux-gnueabihf-g++ \
-          CFLAGS="-Os" \
-          ./configure \
-          --host=arm-linux-gnueabihf \
-          --prefix=/home/runner/php-arm32 \
-          --disable-all \
-          --enable-cli \
-          --enable-embed \
-          --with-zlib=/home/runner/zlib-arm32 \
-          --with-libxml=/home/runner/libxml2-arm32 \
-          --with-openssl=/home/runner/openssl-arm32
-
-      - name: Build PHP
-        run: |
-          cd php-src
-          make -j$(nproc)
-
-      - name: Install PHP
-        run: |
-          cd php-src
-          make install
-
-      - name: Verify binary
-        run: |
-          file /home/runner/php-arm32/bin/php
-          /home/runner/php-arm32/bin/php -v || true
-
-      - name: Upload PHP binary artifact
-        uses: actions/upload-artifact@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          name: php-arm32
-          path: /home/runner/php-arm32
-          retention-days: 7
+          path: ${{ github.workspace }}/build-arm32/src
 
-      - name: Show config log on failure
-        if: failure()
+      - name: Install dependencies
         run: |
-          cat php-src/config.log
+          sudo dpkg --add-architecture i386
+          sudo apt update
+          sudo apt install -y gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
+
+      - name: Setup environment variables
+        run: |
+          export CC=arm-linux-gnueabi-gcc
+          export CXX=arm-linux-gnueabi-g++
+          echo "CC=$CC" >> $GITHUB_ENV
+
+      - name: Configure and build
+        working-directory: ${{ github.workspace }}/build-arm32
+        run: |
+          cd src
+          make clean || true
+          make TARGET_ARCH=arm
+
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: arm32-build-output
+          path: ${{ github.workspace }}/build-arm32/src/*.bin
