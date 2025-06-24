@@ -1,4 +1,4 @@
-name: Build
+name: 🛠️ Build PHP for ARMv7a Android (Full Extensions)
 
 on:
   workflow_dispatch:
@@ -13,15 +13,32 @@ jobs:
 
     - name: ⚙️ Setup environment
       run: |
-        echo "NDK_VERSION=r25c" >> $GITHUB_ENV
-        echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
+        export NDK_HOME="${{ github.workspace }}/android-ndk-r25c"
+        export TOOLCHAIN="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+        export SYSROOT="$TOOLCHAIN/sysroot"
+        export PREFIX="$SYSROOT/usr"
+        echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
+        echo "TOOLCHAIN=$TOOLCHAIN" >> $GITHUB_ENV
+        echo "SYSROOT=$SYSROOT" >> $GITHUB_ENV
+        echo "PREFIX=$PREFIX" >> $GITHUB_ENV
+
         echo "API_LEVEL=19" >> $GITHUB_ENV
+        echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
-        echo "NDK_HOME=${{ github.workspace }}/android-ndk-r25c" >> $GITHUB_ENV
-        echo "TOOLCHAIN=${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
-        echo "SYSROOT=${TOOLCHAIN}/sysroot" >> $GITHUB_ENV
-        echo "PREFIX=${SYSROOT}/usr" >> $GITHUB_ENV
+
+        echo "CC=$TOOLCHAIN/bin/armv7a-linux-androideabi${API_LEVEL}-clang" >> $GITHUB_ENV
+        echo "CXX=$TOOLCHAIN/bin/armv7a-linux-androideabi${API_LEVEL}-clang++" >> $GITHUB_ENV
+        echo "AR=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+        echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
+        echo "STRIP=$TOOLCHAIN/bin/llvm-strip" >> $GITHUB_ENV
+
+        echo "CFLAGS=-O2 -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$PREFIX/include" >> $GITHUB_ENV
+        echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie" >> $GITHUB_ENV
+        echo "LIBS=-llog -landroid" >> $GITHUB_ENV
+        echo "CPPFLAGS=-I$PREFIX/include" >> $GITHUB_ENV
+
+        echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
 
     - name: 🧰 Install host dependencies
       run: |
@@ -38,21 +55,8 @@ jobs:
 
     - name: 📦 Download Android NDK
       run: |
-        wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
-        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
-
-    - name: 🛠️ Setup toolchain
-      run: |
-        echo "CC=${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang" >> $GITHUB_ENV
-        echo "CXX=${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang++" >> $GITHUB_ENV
-        echo "AR=${{ env.TOOLCHAIN }}/bin/llvm-ar" >> $GITHUB_ENV
-        echo "RANLIB=${{ env.TOOLCHAIN }}/bin/llvm-ranlib" >> $GITHUB_ENV
-        echo "STRIP=${{ env.TOOLCHAIN }}/bin/llvm-strip" >> $GITHUB_ENV
-        echo "CFLAGS=-O2 -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I${{ env.PREFIX }}/include" >> $GITHUB_ENV
-        echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined -L${{ env.PREFIX }}/lib -fPIE -pie" >> $GITHUB_ENV
-        echo "LIBS=-llog -landroid" >> $GITHUB_ENV
-        echo "PATH=${{ env.TOOLCHAIN }}/bin:$PATH" >> $GITHUB_ENV
-        echo "CPPFLAGS=-I${{ env.PREFIX }}/include" >> $GITHUB_ENV
+        wget -q https://dl.google.com/android/repository/android-ndk-r25c-linux.zip
+        unzip -q android-ndk-r25c-linux.zip
 
     - name: 🛠️ Build zlib for ARMv7a
       run: |
@@ -114,7 +118,7 @@ jobs:
         export CC="${{ env.CC }}"
         export CFLAGS="${{ env.CFLAGS }}"
         export LDFLAGS="${{ env.LDFLAGS }}"
-        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }} --with-libxml-prefix=${{ env.PREFIX不仅是libxml2-dev
+        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }} --with-libxml-prefix=${{ env.PREFIX }}
         make -j$(nproc)
         make install
         cd ..
@@ -164,6 +168,7 @@ jobs:
     - name: ⚙️ Configure PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
+        set -euxo pipefail
         export CC="${{ env.CC }}"
         export CXX="${{ env.CXX }}"
         export AR="${{ env.AR }}"
@@ -210,7 +215,7 @@ jobs:
           --without-pear \
           --disable-cgi \
           --disable-fpm \
-          > configure.log 2>&1 || { cat configure.log; exit 1; }
+          > configure.log 2>&1 || (cat configure.log && exit 1)
 
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
