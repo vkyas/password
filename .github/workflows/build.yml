@@ -23,6 +23,8 @@ jobs:
         echo "SYSROOT=${TOOLCHAIN}/sysroot" >> $GITHUB_ENV
         echo "PREFIX=${SYSROOT}/usr" >> $GITHUB_ENV
         echo "HOST_TRIPLE=armv7a-linux-androideabi" >> $GITHUB_ENV
+        echo "EXTENSION_DIR=/data/adb/php7/files/bin" >> $GITHUB_ENV
+        echo "ZEND_EXTENSION_DIR=no-debug-non-zts-20190902" >> $GITHUB_ENV
 
     - name: 🧰 Install dependencies
       run: |
@@ -50,7 +52,7 @@ jobs:
         echo "STRIP=${{ env.TOOLCHAIN }}/bin/llvm-strip" >> $GITHUB_ENV
         echo "CFLAGS='-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I${{ env.PREFIX }}/include'" >> $GITHUB_ENV
         echo "LDFLAGS='-Wl,--fix-cortex-a8 -Wl,--no-undefined -L${{ env.PREFIX }}/lib -fPIE -pie'" >> $GITHUB_ENV
-        echo "LIBS='-llog -landroid -lm'" >> $GITHUB_ENV  # Added -lm for math library
+        echo "LIBS='-llog -landroid -lm'" >> $GITHUB_ENV
         echo "PATH=${{ env.TOOLCHAIN }}/bin:$PATH" >> $GITHUB_ENV
 
     - name: 📄 Download PHP
@@ -104,17 +106,24 @@ jobs:
           --enable-ftp \
           --enable-exif \
           --enable-opcache \
+          --enable-ctype \
+          --enable-gettext \
+          --enable-gd \
+          --enable-gmp \
+          --enable-iconv \
+          --enable-tar \
+          --enable-zip \
           --with-zlib \
           --with-iconv \
+          --with-gmp \
+          --with-zip \
           --without-bz2 \
           --without-xsl \
           --without-readline \
           --without-ldap \
-          --without-pdo-pgsql \
           --without-pear \
           --disable-cgi \
-          --disable-fpm \
-          --disable-gd  # Disabled until dependencies are built
+          --disable-fpm
 
         echo "Configuration complete. Review any warnings above."
 
@@ -124,10 +133,56 @@ jobs:
         make -j$(nproc)
         make install INSTALL_ROOT=$(pwd)/../${{ env.OUTDIR }}
 
+    - name: 🧹 Post-install setup
+      run: |
+        # Create target directory structure
+        mkdir -p ${{ env.OUTDIR }}/php/lib/php/extensions/${{ env.ZEND_EXTENSION_DIR }}
+        mkdir -p ${{ env.OUTDIR }}/php/bin
+        
+        # Copy php.ini
+        cp ${{ env.PHP_SOURCE }}/php.ini-development ${{ env.OUTDIR }}/php/lib/php.ini
+        
+        # Basic php.ini configuration
+        echo "date.timezone = UTC" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "display_errors = Off" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "short_open_tag = On" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "enable_dl = On" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension_dir = \"${{ env.EXTENSION_DIR }}\"" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        
+        # Move extensions to target directory
+        mv ${{ env.OUTDIR }}/php/lib/php/extensions/${{ env.ZEND_EXTENSION_DIR }}/*.so ${{ env.OUTDIR }}/php/bin/
+        
+        # Enable extensions
+        echo "extension=ctype.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=mbstring.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=gd.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=gettext.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=zip.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=gmp.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=iconv.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=calendar.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=fileinfo.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=rar.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=tar.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=bcmath.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=exif.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=phar.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=posix.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=shmop.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=soap.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=sockets.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=sysvmsg.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=sysvsem.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=sysvshm.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=xml.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        
+        # Enable opcache as zend extension
+        echo "zend_extension=opcache.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+
     - name: 🧹 Strip binaries
       run: |
         ${{ env.STRIP }} --strip-unneeded ${{ env.OUTDIR }}/php/bin/php
-        find ${{ env.OUTDIR }}/php/lib/ -name "*.so" -exec ${{ env.STRIP }} --strip-unneeded {} \;
+        find ${{ env.OUTDIR }}/php/bin/ -name "*.so" -exec ${{ env.STRIP }} --strip-unneeded {} \;
 
     - name: 📦 Package output
       run: |
