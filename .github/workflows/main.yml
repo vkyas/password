@@ -10,10 +10,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # Checkout kode (jika ada kode tambahan di repo)
       - uses: actions/checkout@v4
 
-      # Install toolchain dan dependensi sistem
       - name: Install ARM toolchain and system dependencies
         run: |
           sudo apt-get update
@@ -30,19 +28,18 @@ jobs:
             wget \
             tar
 
-      # Kompilasi zlib untuk ARM
       - name: Build zlib for ARM
         run: |
           wget https://zlib.net/zlib-1.3.1.tar.gz
           tar -xvzf zlib-1.3.1.tar.gz
           cd zlib-1.3.1
+          mkdir -p /zlib-arm32/lib
           CC=arm-linux-gnueabihf-gcc \
           CFLAGS="-Os" \
           ./configure --prefix=/zlib-arm32
           make -j$(nproc)
           make install
 
-      # Kompilasi libxml2 untuk ARM
       - name: Build libxml2 for ARM
         run: |
           wget http://xmlsoft.org/sources/libxml2-2.12.6.tar.xz
@@ -57,7 +54,6 @@ jobs:
           make -j$(nproc)
           make install
 
-      # Kompilasi openssl untuk ARM
       - name: Build OpenSSL for ARM
         run: |
           wget https://www.openssl.org/source/openssl-3.2.1.tar.gz
@@ -71,14 +67,12 @@ jobs:
           make -j$(nproc)
           make install_sw
 
-      # Unduh dan ekstrak source code PHP
       - name: Download PHP source
         run: |
           wget https://www.php.net/distributions/php-8.3.6.tar.gz
           tar -xvzf php-8.3.6.tar.gz
           mv php-8.3.6 php-src
 
-      # Konfigurasi PHP untuk ARM
       - name: Configure PHP
         run: |
           cd php-src
@@ -97,25 +91,21 @@ jobs:
           --with-libxml=/libxml2-arm32 \
           --with-openssl=/openssl-arm32
 
-      # Kompilasi PHP
       - name: Build PHP
         run: |
           cd php-src
           make -j$(nproc)
 
-      # Instalasi PHP
       - name: Install PHP
         run: |
           cd php-src
           make install
 
-      # Verifikasi binary
       - name: Verify binary
         run: |
           file /php-arm32/bin/php
           /php-arm32/bin/php -v || true
 
-      # Simpan binary sebagai artifact
       - name: Upload PHP binary artifact
         uses: actions/upload-artifact@v4
         with:
@@ -123,7 +113,6 @@ jobs:
           path: /php-arm32
           retention-days: 7
 
-      # (Opsional) Tampilkan log jika gagal
       - name: Show config log on failure
         if: failure()
         run: |
