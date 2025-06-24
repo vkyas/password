@@ -191,12 +191,11 @@ jobs:
         --with-libxml \
         --with-zlib \
         --with-iconv=${PREFIX} \
-        --with-gd \
         --with-jpeg=${PREFIX} \
-        --with-png=${PREFIX} \
         --with-freetype=${PREFIX} \
-        --with-oniguruma=${PREFIX} \
+        --with-onig=${PREFIX} \
         --disable-all \
+        --enable-gd \
         --enable-mbstring \
         --enable-bcmath \
         --enable-session \
@@ -236,7 +235,8 @@ jobs:
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
-        make V=1 -j$(nproc) || (cat ext/standard/build.log && false)
+        make -j$(nproc) || (echo "=== Build failed, showing ext/standard logs ==="; ls ext/standard/*.log; cat ext/standard/*.log || echo "No logs found"; false)
+
         
     - name: 🧹 Post-install setup
       run: |
