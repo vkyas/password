@@ -1,4 +1,4 @@
-name: Build PHP ARMv7a Android
+name: Build
 
 on:
   workflow_dispatch:
@@ -60,7 +60,18 @@ jobs:
         echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie" >> $GITHUB_ENV
         echo "LIBS=-llog -landroid -lm" >> $GITHUB_ENV
         echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
-     
+        
+    - name: 🔤 Build Oniguruma
+      run: |
+        wget -q https://github.com/kkos/oniguruma/releases/download/v6.9.8/onig-6.9.8.tar.gz
+        tar -xzf onig-6.9.8.tar.gz
+        cd onig-6.9.8
+        ./configure --host=${HOST_TRIPLE} --prefix=${PREFIX} --disable-shared --enable-static \
+          CC=${CC} CFLAGS="${CFLAGS}" LDFLAGS="${LDFLAGS}"
+        make -j$(nproc)
+        make install
+        cd ..
+    
     - name: 🔤 Build libxml2
       run: |
         wget -q https://download.gnome.org/sources/libxml2/2.10/libxml2-2.10.3.tar.xz
@@ -97,11 +108,6 @@ jobs:
         make -j$(nproc)
         make install
         cd ..
-
-    - name: ✅ Verify libiconv installed
-      run: |
-        ls -l ${{ env.PREFIX }}/lib | grep libiconv.a || exit 1
-        ls -l ${{ env.PREFIX }}/include | grep iconv.h || exit 1
 
     - name: 🔤 Build libjpeg-turbo
       run: |
@@ -172,7 +178,7 @@ jobs:
         export LIBS="-llog -landroid -lm -liconv"
         export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig"
     
-        if ! ../${PHP_SOURCE}/configure \
+        ../${PHP_SOURCE}/configure \
           --build=x86_64-pc-linux-gnu \
           --host=${HOST_TRIPLE} \
           --prefix=/data/php \
@@ -184,6 +190,7 @@ jobs:
           --with-png-dir=${PREFIX} \
           --with-freetype-dir=${PREFIX} \
           --with-libxml-dir=${PREFIX} \
+          --with-onig=${PREFIX}
           --disable-all \
           --enable-mbstring \
           --enable-bcmath \
@@ -216,20 +223,6 @@ jobs:
           --without-pear \
           --disable-cgi \
           --disable-fpm
-        then
-          echo "::error ::PHP configure failed! Extracting errors from config.log..."
-          [[ -f config.log ]] && grep -i -A20 'error' config.log || echo "::warning ::No config.log found!"
-          exit 1
-        fi
-        
-    - name: Debug config.log
-      if: failure()  # jalankan hanya jika step sebelumnya gagal
-      working-directory: ${{ env.WORKDIR }}
-      run: |
-        echo "---- Showing last 200 lines of config.log ----"
-        tail -n 200 config.log
-        echo "---- Searching for errors in config.log ----"
-        grep -i -A20 -B20 error config.log || echo "No error found"
         
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
