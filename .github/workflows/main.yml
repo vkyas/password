@@ -38,8 +38,8 @@ jobs:
 
     - name: 📦 Download Android NDK
       run: |
-        wget -q https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux-x86_64.zip
-        unzip -q android-ndk-${NDK_VERSION}-linux-x86_64.zip -d android-ndk
+        wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux-x86_64.zip
+        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux-x86_64.zip -d android-ndk
 
     - name: 🛠️ Setup toolchain environment
       run: |
