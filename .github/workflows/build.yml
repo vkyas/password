@@ -179,13 +179,11 @@ jobs:
         export STRIP="${STRIP}"
         export CPPFLAGS="-I${PREFIX}/include"
         export CFLAGS="${CFLAGS}"
-        # export LDFLAGS="${LDFLAGS}"
         export LDFLAGS="-L${PREFIX}/lib -Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie"
         export LIBS="-llog -landroid -lm -liconv"
         export PHP_ICONV="yes"
-        # export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig"
         export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-        
+    
         if ! ../${PHP_SOURCE}/configure \
           --build=x86_64-pc-linux-gnu \
           --host=${HOST_TRIPLE} \
@@ -194,12 +192,12 @@ jobs:
           --with-zlib \
           --with-iconv=${PREFIX} \
           --with-gd \
-          --with-jpeg-dir=${PREFIX} \
-          --with-png-dir=${PREFIX} \
-          --with-freetype-dir=${PREFIX} \
-          --with-libxml-dir=${PREFIX} \
-          --with-onig=${PREFIX} \
+          --with-jpeg=${PREFIX} \
+          --with-png=${PREFIX} \
+          --with-freetype=${PREFIX} \
+          --with-oniguruma=${PREFIX} \
           --disable-all \
+          --disable-dns \  # ← ini penting
           --enable-mbstring \
           --enable-bcmath \
           --enable-session \
@@ -220,6 +218,7 @@ jobs:
           --enable-fileinfo \
           --enable-calendar \
           --enable-ftp \
+          --enable-gd \
           --enable-exif \
           --enable-opcache \
           --enable-ctype \
