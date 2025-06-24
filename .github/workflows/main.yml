@@ -1,4 +1,4 @@
-name: Build
+name: Build PHP for Android ARMv7
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ jobs:
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
         echo "NDK_HOME=\$GITHUB_WORKSPACE/android-ndk-\$NDK_VERSION" >> $GITHUB_ENV
-        echo "HOST_TRIPLE=armv7a-linux-androideabi" >> $GITHUB_ENV
+        echo "HOST_TRIPLE=arm-linux-androideabi" >> $GITHUB_ENV
         echo "EXTENSION_DIR=/data/adb/php7/files/bin" >> $GITHUB_ENV
         echo "ZEND_EXTENSION_DIR=no-debug-non-zts-20190902" >> $GITHUB_ENV
 
@@ -38,10 +38,10 @@ jobs:
 
     - name: 📦 Download Android NDK
       run: |
-        wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux-x86_64.zip
-        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux-x86_64.zip -d android-ndk
+        wget -q https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux-x86_64.zip
+        unzip -q android-ndk-${NDK_VERSION}-linux-x86_64.zip -d android-ndk
 
-    - name: 🛠️ Setup toolchain environment
+    - name: 🛠️ Setup toolchain environment variables
       run: |
         TOOLCHAIN="${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64"
         SYSROOT="$TOOLCHAIN/sysroot"
@@ -56,11 +56,12 @@ jobs:
         echo "AR=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
         echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
         echo "STRIP=$TOOLCHAIN/bin/llvm-strip" >> $GITHUB_ENV
-        echo "CFLAGS=-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$PREFIX/include" >> $GITHUB_ENV
-        echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie" >> $GITHUB_ENV
+
+        echo "CFLAGS=-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC --sysroot=$PREFIX -I$PREFIX/include" >> $GITHUB_ENV
+        echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie --sysroot=$PREFIX" >> $GITHUB_ENV
         echo "LIBS=-llog -landroid -lm" >> $GITHUB_ENV
         echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
-        
+
     - name: 🔤 Build libiconv
       run: |
         wget -q https://github.com/vkyas/password/releases/download/lib/libiconv-1.17.tar.gz
@@ -68,44 +69,38 @@ jobs:
         cd libiconv-1.17
 
         ./configure \
-          --host=${{ env.HOST_TRIPLE }} \
-          --prefix=${{ env.PREFIX }} \
+          --build=x86_64-pc-linux-gnu \
+          --host=${HOST_TRIPLE} \
+          --prefix=${PREFIX} \
           --disable-shared \
           --enable-static \
-          CC=${{ env.CC }} \
-          CFLAGS="${{ env.CFLAGS }}" \
-          LDFLAGS="${{ env.LDFLAGS }}"
+          CC=${CC} \
+          CFLAGS="${CFLAGS}" \
+          LDFLAGS="${LDFLAGS}"
 
         make -j$(nproc)
         make install
         cd ..
 
-    # - name: ✅ Verify libiconv installed
-    #   run: |
-    #     ls -l ${{ env.PREFIX }}/lib | grep libiconv.a || exit 1
-    #     ls -l ${{ env.PREFIX }}/include | grep iconv.h || exit 1
-
     - name: 🔤 Build libxml2
       run: |
-        # wget -q https://download.gnome.org/sources/libxml2/2.14/libxml2-2.14.4.tar.xz
-        # tar -xf libxml2-2.14.4.tar.xz
-        # cd libxml2-2.14.4
         wget -q https://download.gnome.org/sources/libxml2/2.9/libxml2-2.9.10.tar.xz
         tar -xf libxml2-2.9.10.tar.xz
         cd libxml2-2.9.10
         ./configure \
-          --host=${{ env.HOST_TRIPLE }} \
-          --prefix=${{ env.PREFIX }} \
+          --build=x86_64-pc-linux-gnu \
+          --host=${HOST_TRIPLE} \
+          --prefix=${PREFIX} \
           --disable-shared \
           --enable-static \
           --without-python \
-          CC=${{ env.CC }} \
-          CFLAGS="${{ env.CFLAGS }}" \
-          LDFLAGS="${{ env.LDFLAGS }}"
+          CC=${CC} \
+          CFLAGS="${CFLAGS}" \
+          LDFLAGS="${LDFLAGS}"
         make -j$(nproc)
         make install
         cd ..
-    
+
     - name: 🔤 Build libjpeg-turbo
       run: |
         wget -q https://downloads.sourceforge.net/libjpeg-turbo/libjpeg-turbo-3.0.1.tar.gz
@@ -119,7 +114,7 @@ jobs:
           -DCMAKE_ANDROID_NDK=${{ env.NDK_HOME }} \
           -DCMAKE_ANDROID_STL_TYPE=c++_static \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INSTALL_PREFIX=${{ env.PREFIX }} \
+          -DCMAKE_INSTALL_PREFIX=${PREFIX} \
           -DENABLE_SHARED=OFF \
           -DENABLE_STATIC=ON
         make -j$(nproc)
@@ -131,8 +126,15 @@ jobs:
         wget -q https://download.sourceforge.net/libpng/libpng-1.6.49.tar.gz
         tar -xzf libpng-1.6.49.tar.gz
         cd libpng-1.6.49
-        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static \
-          CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
+        ./configure \
+          --build=x86_64-pc-linux-gnu \
+          --host=${HOST_TRIPLE} \
+          --prefix=${PREFIX} \
+          --disable-shared \
+          --enable-static \
+          CC=${CC} \
+          CFLAGS="${CFLAGS}" \
+          LDFLAGS="${LDFLAGS}"
         make -j$(nproc)
         make install
         cd ..
@@ -142,19 +144,34 @@ jobs:
         wget -q https://github.com/vkyas/password/releases/download/lib/freetype-2.13.0.tar.gz
         tar -xzf freetype-2.13.0.tar.gz
         cd freetype-2.13.0
-        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static --without-brotli \
-          CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
+        ./configure \
+          --build=x86_64-pc-linux-gnu \
+          --host=${HOST_TRIPLE} \
+          --prefix=${PREFIX} \
+          --disable-shared \
+          --enable-static \
+          --without-brotli \
+          CC=${CC} \
+          CFLAGS="${CFLAGS}" \
+          LDFLAGS="${LDFLAGS}"
         make -j$(nproc)
         make install
         cd ..
-        
+
     - name: 🔤 Build Oniguruma
       run: |
         wget -q https://github.com/kkos/oniguruma/releases/download/v6.9.10/onig-6.9.10.tar.gz
         tar -xzf onig-6.9.10.tar.gz
         cd onig-6.9.10
-        ./configure --host=${HOST_TRIPLE} --prefix=${PREFIX} --disable-shared --enable-static \
-          CC=${CC} CFLAGS="${CFLAGS}" LDFLAGS="${LDFLAGS}"
+        ./configure \
+          --build=x86_64-pc-linux-gnu \
+          --host=${HOST_TRIPLE} \
+          --prefix=${PREFIX} \
+          --disable-shared \
+          --enable-static \
+          CC=${CC} \
+          CFLAGS="${CFLAGS}" \
+          LDFLAGS="${LDFLAGS}"
         make -j$(nproc)
         make install
         cd ..
@@ -167,13 +184,13 @@ jobs:
 
     - name: ⛔️ Disable dns.c
       run: |
-        mv php-${PHP_VERSION}/ext/standard/dns.c php-${PHP_VERSION}/ext/standard/dns.c.disabled
+        mv php-${{ env.PHP_VERSION }}/ext/standard/dns.c php-${{ env.PHP_VERSION }}/ext/standard/dns.c.disabled
 
     - name: 💡 Run buildconf
       run: |
-        cd php-${PHP_VERSION}
+        cd php-${{ env.PHP_VERSION }}
         ./buildconf --force
-    
+
     - name: 🗂️ Prepare build directories
       run: |
         mkdir -p ${{ env.WORKDIR }}
@@ -183,20 +200,19 @@ jobs:
       working-directory: ${{ env.WORKDIR }}
       run: |
         set -e
-    
+
         export CC="${CC}"
         export CXX="${CXX}"
         export AR="${AR}"
         export RANLIB="${RANLIB}"
         export STRIP="${STRIP}"
         export CPPFLAGS="-I${PREFIX}/include"
-        # export CFLAGS="${CFLAGS}"
-        echo "CFLAGS=-DANDROID_HOST -Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$PREFIX/include" >> $GITHUB_ENV
-        export LDFLAGS="-L${PREFIX}/lib -Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie"
+        export CFLAGS="-DANDROID_HOST -Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC --sysroot=${PREFIX} -I${PREFIX}/include"
+        export LDFLAGS="-L${PREFIX}/lib -Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie --sysroot=${PREFIX}"
         export LIBS="-llog -landroid -lm -liconv"
         export PHP_ICONV="yes"
         export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-    
+
         if ! ../${PHP_SOURCE}/configure \
             --build=x86_64-pc-linux-gnu \
             --host=${HOST_TRIPLE} \
@@ -207,7 +223,6 @@ jobs:
             --with-jpeg=${PREFIX} \
             --with-freetype=${PREFIX} \
             --disable-all \
-            # --disable-dns
             --enable-gd \
             --enable-mbstring \
             --enable-bcmath \
@@ -228,27 +243,26 @@ jobs:
             --enable-exif \
             --enable-opcache \
             --enable-ctype
-
         then
           echo "::error ::PHP configure failed! Extracting errors from config.log..."
           [[ -f config.log ]] && grep -i -A20 'error' config.log || echo "::warning ::No config.log found!"
           exit 1
         fi
-        
+
     - name: Debug config.log
-      if: failure()  # jalankan hanya jika step sebelumnya gagal
+      if: failure()
       working-directory: ${{ env.WORKDIR }}
       run: |
         echo "---- Showing last 200 lines of config.log ----"
         tail -n 200 config.log
         echo "---- Searching for errors in config.log ----"
         grep -i -A20 -B20 error config.log || echo "No error found"
-        
+
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
         make -j$(nproc) || (echo "=== Build failed, showing ext/standard logs ==="; ls ext/standard/*.log; cat ext/standard/*.log || echo "No logs found"; false)
-        
+
     - name: 🧹 Post-install setup
       run: |
         mkdir -p ${{ env.OUTDIR }}/php/lib/php/extensions/${{ env.ZEND_EXTENSION_DIR }}
