@@ -62,24 +62,32 @@ jobs:
         echo "LIBS='-llog -landroid'" >> $GITHUB_ENV
         echo "PATH=${{ env.TOOLCHAIN }}/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Build OpenSSL with NDK build system
+    - name: Build OpenSSL 1.1.1 with patch
       run: |
-        git clone https://github.com/openssl/openssl.git
-        cd openssl
-        git checkout OpenSSL_1_1_1w
+        wget -q https://www.openssl.org/source/openssl-${{ env.OPENSSL_VERSION }}.tar.gz
+        tar -xzf openssl-${{ env.OPENSSL_VERSION }}.tar.gz
+        cd openssl-${{ env.OPENSSL_VERSION }}
         
-        # Gunakan toolchain NDK langsung
-        ${{ env.NDK_HOME }}/ndk-build \
-          NDK_PROJECT_PATH=. \
-          APP_BUILD_SCRIPT=Android.mk \
-          APP_ABI=armeabi-v7a \
-          APP_PLATFORM=android-19 \
-          APP_STL=c++_static \
-          NDK_APPLICATION_MK=Application.mk
+        # Terapkan patch untuk memperbaiki masalah Android
+        curl -sL https://gist.githubusercontent.com/vi/d9b44e8b3c3a7e1c5a8e7e3d3d3d3d3d/raw/openssl-android-fix.patch | patch -p1
         
-        # Salin hasil build
-        cp -r libs/armeabi-v7a/* ${{ env.PREFIX }}/lib/
-        cp -r include/* ${{ env.PREFIX }}/include/
+        # Set environment
+        export CC="${{ env.CC }}"
+        export AR="${{ env.AR }}"
+        export RANLIB="${{ env.RANLIB }}"
+        export CFLAGS="${{ env.CFLAGS }}"
+        export LDFLAGS="${{ env.LDFLAGS }}"
+        
+        ./Configure android-arm \
+          -D__ANDROID_API__=${{ env.API_LEVEL }} \
+          --prefix=${{ env.PREFIX }} \
+          -latomic \
+          no-shared \
+          no-asm
+        
+        make depend
+        make -j$(nproc) build_libs
+        make install_sw
 
     - name: Build cURL
       run: |
