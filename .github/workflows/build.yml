@@ -166,7 +166,7 @@ jobs:
           --prefix=/data/php \
           --with-libxml \
           --with-zlib \
-          --with-iconv=${PREFIX} \
+          # --with-iconv=${PREFIX} \
           --with-gd \
           --with-jpeg-dir=${PREFIX} \
           --with-png-dir=${PREFIX} \
@@ -201,6 +201,7 @@ jobs:
           --without-ldap \
           --without-pdo-pgsql \
           --without-pear \
+          --without-iconv
           --disable-cgi \
           --disable-fpm || CONFIG_STATUS=$?
 
