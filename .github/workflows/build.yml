@@ -147,18 +147,6 @@ jobs:
         export LIBS="-liconv -llog -landroid -lm"
         export PKG_CONFIG_PATH="${{ env.PREFIX }}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
-        echo "🔧 Symlinking libiconv.a to common toolchain lib..."
-        if [ ! -f "$TOOLCHAIN_LIB/libiconv.a" ]; then
-          ln -s "$ICONV_LIB" "$TOOLCHAIN_LIB/libiconv.a"
-        else
-          echo "✅ libiconv.a already exists at $TOOLCHAIN_LIB"
-        fi
-        
-        echo "🔍 Checking that libiconv.a is visible to linker..."
-        find $TOOLCHAIN_LIB -name 'libiconv.a' || echo "::warning ::libiconv.a not found after symlink"
-        echo 'int main(){ iconv_open("UTF-8", "ASCII"); return 0; }' > test_iconv.c
-        $CC test_iconv.c -I${{ env.PREFIX }}/include -L${{ env.PREFIX }}/lib -liconv -o test_iconv || echo "::error ::Manual iconv test link failed"
-
         echo "⚙️ Running configure..."
         ../${PHP_SOURCE}/configure \
           --build=x86_64-pc-linux-gnu \
