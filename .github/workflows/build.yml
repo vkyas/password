@@ -23,7 +23,7 @@ jobs:
         echo "SYSROOT=${TOOLCHAIN}/sysroot" >> $GITHUB_ENV
         echo "PREFIX=${SYSROOT}/usr" >> $GITHUB_ENV
 
-    - name: 🧰 Install dependencies
+    - name: 🧰 Install host dependencies
       run: |
         sudo apt update
         sudo apt install -y \
@@ -33,7 +33,8 @@ jobs:
           libonig-dev libzip-dev libssl-dev \
           libcurl4-openssl-dev libpng-dev libjpeg-dev \
           libfreetype6-dev libxpm-dev libxslt1-dev \
-          libreadline-dev libldap2-dev libargon2-dev
+          libreadline-dev libldap2-dev libargon2-dev \
+          libbz2-dev
 
     - name: 📦 Download Android NDK
       run: |
@@ -47,10 +48,107 @@ jobs:
         echo "AR=${{ env.TOOLCHAIN }}/bin/llvm-ar" >> $GITHUB_ENV
         echo "RANLIB=${{ env.TOOLCHAIN }}/bin/llvm-ranlib" >> $GITHUB_ENV
         echo "STRIP=${{ env.TOOLCHAIN }}/bin/llvm-strip" >> $GITHUB_ENV
-        echo "CFLAGS='-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I${{ env.PREFIX }}/include'" >> $GITHUB_ENV
-        echo "LDFLAGS='-Wl,--fix-cortex-a8 -Wl,--no-undefined -L${{ env.PREFIX }}/lib -fPIE -pie'" >> $GITHUB_ENV
-        echo "LIBS='-llog -landroid'" >> $GITHUB_ENV
+        echo "CFLAGS=-O2 -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I${{ env.PREFIX }}/include" >> $GITHUB_ENV
+        echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined -L${{ env.PREFIX }}/lib -fPIE -pie" >> $GITHUB_ENV
+        echo "LIBS=-llog -landroid" >> $GITHUB_ENV
         echo "PATH=${{ env.TOOLCHAIN }}/bin:$PATH" >> $GITHUB_ENV
+        echo "CPPFLAGS=-I${{ env.PREFIX }}/include" >> $GITHUB_ENV
+
+    - name: 🛠️ Build zlib for ARMv7a
+      run: |
+        wget -q https://zlib.net/zlib-1.3.tar.gz
+        tar -xzf zlib-1.3.tar.gz
+        cd zlib-1.3
+        export CC="${{ env.CC }}"
+        export CFLAGS="${{ env.CFLAGS }}"
+        export LDFLAGS="${{ env.LDFLAGS }}"
+        ./configure --prefix=${{ env.PREFIX }}
+        make -j$(nproc)
+        make install
+        cd ..
+
+    - name: 🛠️ Build libpng for ARMv7a
+      run: |
+        wget -q https://downloads.sourceforge.net/project/libpng/libpng16/1.6.44/libpng-1.6.44.tar.gz
+        tar -xzf libpng-1.6.44.tar.gz
+        cd libpng-1.6.44
+        export CC="${{ env.CC }}"
+        export CFLAGS="${{ env.CFLAGS }}"
+        export LDFLAGS="${{ env.LDFLAGS }}"
+        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }}
+        make -j$(nproc)
+        make install
+        cd ..
+
+    - name: 🛠️ Build libjpeg for ARMv7a
+      run: |
+        wget -q http://ijg.org/files/jpegsrc.v9f.tar.gz
+        tar -xzf jpegsrc.v9f.tar.gz
+        cd jpeg-9f
+        export CC="${{ env.CC }}"
+        export CFLAGS="${{ env.CFLAGS }}"
+        export LDFLAGS="${{ env.LDFLAGS }}"
+        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }}
+        make -j$(nproc)
+        make install
+        cd ..
+
+    - name: 🛠️ Build freetype for ARMv7a
+      run: |
+        wget -q https://downloads.sourceforge.net/project/freetype/freetype2/2.13.2/freetype-2.13.2.tar.gz
+        tar -xzf freetype-2.13.2.tar.gz
+        cd freetype-2.13.2
+        export CC="${{ env.CC }}"
+        export CFLAGS="${{ env.CFLAGS }}"
+        export LDFLAGS="${{ env.LDFLAGS }}"
+        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }} --without-harfbuzz
+        make -j$(nproc)
+        make install
+        cd ..
+
+    - name: 🛠️ Build libxslt for ARMv7a
+      run: |
+        wget -q http://xmlsoft.org/sources/libxslt-1.1.42.tar.gz
+        tar -xzf libxslt-1.1.42.tar.gz
+        cd libxslt-1.1.42
+        export CC="${{ env.CC }}"
+        export CFLAGS="${{ env.CFLAGS }}"
+        export LDFLAGS="${{ env.LDFLAGS }}"
+        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }} --with-libxml-prefix=${{ env.PREFIX不仅是libxml2-dev
+        make -j$(nproc)
+        make install
+        cd ..
+
+    - name: 🛠️ Build libbz2 for ARMv7a
+      run: |
+        wget -q https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
+        tar -xzf bzip2-1.0.8.tar.gz
+        cd bzip2-1.0.8
+        make CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}" CC="${{ env.CC }}" -j$(nproc)
+        make PREFIX=${{ env.PREFIX }} install
+        cd ..
+
+    - name: 🛠️ Build readline for ARMv7a
+      run: |
+        wget -q https://ftp.gnu.org/gnu/readline/readline-8.2.tar.gz
+        tar -xzf readline-8.2.tar.gz
+        cd readline-8.2
+        export CC="${{ env.CC }}"
+        export CFLAGS="${{ env.CFLAGS }}"
+        export LDFLAGS="${{ env.LDFLAGS }}"
+        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }}
+        make -j$(nproc)
+        make install
+        cd ..
+
+    - name: 🔍 Check dependencies
+      run: |
+        for lib in zlib png jpeg freetype xslt bz2 readline; do
+          if [ ! -f "${{ env.PREFIX }}/lib/lib${lib}.a" ] && [ ! -f "${{ env.PREFIX }}/lib/lib${lib}.so" ]; then
+            echo "Error: lib${lib} not found in ${{ env.PREFIX }}/lib"
+            exit 1
+          fi
+        done
 
     - name: 📄 Download PHP
       run: |
@@ -71,10 +169,10 @@ jobs:
         export AR="${{ env.AR }}"
         export RANLIB="${{ env.RANLIB }}"
         export STRIP="${{ env.STRIP }}"
-        export CFLAGS=${{ env.CFLAGS }}
-        export LDFLAGS=${{ env.LDFLAGS }}
-        export LIBS=${{ env.LIBS }}
-        export CPPFLAGS="-I${{ env.PREFIX }}/include"
+        export CFLAGS="${{ env.CFLAGS }}"
+        export LDFLAGS="${{ env.LDFLAGS }}"
+        export LIBS="${{ env.LIBS }}"
+        export CPPFLAGS="${{ env.CPPFLAGS }}"
 
         ../${{ env.PHP_SOURCE }}/configure \
           --host=arm-linux-androideabi \
@@ -104,18 +202,15 @@ jobs:
           --enable-exif \
           --enable-gd \
           --enable-opcache \
-          --with-zlib \
-          --with-iconv \
-          --with-bz2 \
-          --with-xsl \
-          --with-readline \
-          --with-mysqli \
-          --with-pdo-mysql \
-          --with-pdo-pgsql \
-          --with-ldap \
+          --with-zlib=${{ env.PREFIX }} \
+          --with-iconv=${{ env.PREFIX }} \
+          --with-bz2=${{ env.PREFIX }} \
+          --with-xsl=${{ env.PREFIX }} \
+          --with-readline=${{ env.PREFIX }} \
           --without-pear \
           --disable-cgi \
-          --disable-fpm
+          --disable-fpm \
+          > configure.log 2>&1 || { cat configure.log; exit 1; }
 
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
