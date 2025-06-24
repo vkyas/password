@@ -1,79 +1,124 @@
-name: Build PHP 7.4.33 ARMv7 with NDK r18b (DNS Bypassed)
+name: Build PHP 7.4.33 with NDK r18b
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    env:
-      NDK_VERSION: r18b
-      PHP_VERSION: 7.4.33
-      API_LEVEL: 22
-      WORKDIR: build-arm32
-      OUTDIR: output-arm32
-      HOST_TRIPLE: armv7a-linux-androideabi
-      EXTENSION_DIR: /data/adb/php7/files/bin
-      ZEND_EXTENSION_DIR: no-debug-non-zts-20190902
+    runs-on: ubuntu-24.04
 
     steps:
-    - name: Checkout
+    - name: 📅 Checkout repo
       uses: actions/checkout@v4
 
-    - name: Set up dependencies
+    - name: ⚙️ Setup environment variables
       run: |
-        sudo apt-get update
-        sudo apt-get install -y make autoconf libtool pkg-config bison re2c curl
+        echo "NDK_VERSION=r18b" >> $GITHUB_ENV
+        echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
+        echo "API_LEVEL=22" >> $GITHUB_ENV
+        echo "WORKDIR=build-arm32" >> $GITHUB_ENV
+        echo "OUTDIR=output-arm32" >> $GITHUB_ENV
+        echo "HOST_TRIPLE=arm-linux-androideabi" >> $GITHUB_ENV
+        echo "EXTENSION_DIR=/data/adb/php7/files/bin" >> $GITHUB_ENV
+        echo "ZEND_EXTENSION_DIR=no-debug-non-zts-20190902" >> $GITHUB_ENV
 
-    - name: Download NDK
+    - name: 🛠️ Install build dependencies
       run: |
-        wget https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux-x86_64.zip
-        unzip -q android-ndk-${NDK_VERSION}-linux-x86_64.zip
-        mv android-ndk-${NDK_VERSION} android-ndk
+        sudo apt update
+        sudo apt install -y autoconf automake libtool pkg-config \
+          bison re2c make wget unzip file \
+          zlib1g-dev libxml2-dev libsqlite3-dev libonig-dev \
+          libzip-dev libssl-dev libcurl4-openssl-dev \
+          libpng-dev libjpeg-dev libfreetype6-dev libxpm-dev \
+          libxslt1-dev libreadline-dev libldap2-dev libargon2-dev cmake
 
-    - name: Set environment
+    - name: 📆 Download Android NDK
       run: |
-        echo "NDK_HOME=$GITHUB_WORKSPACE/android-ndk" >> $GITHUB_ENV
-        echo "TOOLCHAIN=$GITHUB_WORKSPACE/android-ndk/toolchains/arm-linux-androideabi-4.9/prebuilt/linux-x86_64" >> $GITHUB_ENV
-        echo "SYSROOT=$GITHUB_ENV/ndk/platforms/android-${API_LEVEL}/arch-arm" >> $GITHUB_ENV
-        echo "CC=$GITHUB_WORKSPACE/android-ndk/toolchains/arm-linux-androideabi-4.9/prebuilt/linux-x86_64/bin/arm-linux-androideabi-gcc" >> $GITHUB_ENV
+        wget -q https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux-x86_64.zip
+        unzip -q android-ndk-${NDK_VERSION}-linux-x86_64.zip -d android-ndk
 
-    - name: Download PHP source
+    - name: 🛠️ Setup toolchain for NDK r18b
       run: |
-        curl -sSL https://www.php.net/distributions/php-${PHP_VERSION}.tar.xz | tar -xJf -
-        mv php-${PHP_VERSION} ${WORKDIR}
+        TOOLCHAIN="$GITHUB_WORKSPACE/android-ndk/android-ndk-${NDK_VERSION}/toolchains/arm-linux-androideabi-4.9/prebuilt/linux-x86_64"
+        SYSROOT="$TOOLCHAIN/sysroot"
+        PREFIX="$SYSROOT/usr"
 
-    - name: Disable DNS extension
+        echo "TOOLCHAIN=$TOOLCHAIN" >> $GITHUB_ENV
+        echo "SYSROOT=$SYSROOT" >> $GITHUB_ENV
+        echo "PREFIX=$PREFIX" >> $GITHUB_ENV
+
+        echo "CC=$TOOLCHAIN/bin/arm-linux-androideabi-gcc" >> $GITHUB_ENV
+        echo "CXX=$TOOLCHAIN/bin/arm-linux-androideabi-g++" >> $GITHUB_ENV
+        echo "AR=$TOOLCHAIN/bin/arm-linux-androideabi-ar" >> $GITHUB_ENV
+        echo "RANLIB=$TOOLCHAIN/bin/arm-linux-androideabi-ranlib" >> $GITHUB_ENV
+        echo "STRIP=$TOOLCHAIN/bin/arm-linux-androideabi-strip" >> $GITHUB_ENV
+        echo "CFLAGS=-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC --sysroot=$SYSROOT -I$PREFIX/include" >> $GITHUB_ENV
+        echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined --sysroot=$SYSROOT -L$PREFIX/lib -fPIE -pie" >> $GITHUB_ENV
+        echo "LIBS=-llog -landroid -lm" >> $GITHUB_ENV
+        echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
+
+    - name: 📄 Download PHP source
       run: |
-        mv ${WORKDIR}/ext/standard/dns.c ${WORKDIR}/ext/standard/dns.c.disabled
+        wget -q https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz
+        tar -xzf php-${PHP_VERSION}.tar.gz
+        echo "PHP_SOURCE=php-${PHP_VERSION}" >> $GITHUB_ENV
 
-    - name: Configure PHP
+    - name: ⛔️ Disable dns.c
+      run: |
+        mv php-${PHP_VERSION}/ext/standard/dns.c php-${PHP_VERSION}/ext/standard/dns.c.disabled
+
+    - name: 💡 Run buildconf
+      run: |
+        cd php-${PHP_VERSION}
+        ./buildconf --force
+
+    - name: 📂 Prepare build directory
+      run: |
+        mkdir -p ${WORKDIR} ${OUTDIR}
+
+    - name: ⚙️ Configure PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
-        ./buildconf --force
-        ./configure \
+        export CC="$CC"
+        export CXX="$CXX"
+        export AR="$AR"
+        export RANLIB="$RANLIB"
+        export STRIP="$STRIP"
+        export CPPFLAGS="-I${PREFIX}/include"
+        export LDFLAGS="$LDFLAGS"
+        export LIBS="$LIBS"
+        export CFLAGS="$CFLAGS"
+
+        ../${PHP_SOURCE}/configure \
           --host=${HOST_TRIPLE} \
+          --build=x86_64-pc-linux-gnu \
           --prefix=/data/php \
           --disable-all \
-          --enable-cli \
           --enable-mbstring \
+          --enable-gd \
           --enable-session \
-          --enable-tokenizer \
-          --enable-xml \
-          --enable-posix \
-          --enable-bcmath \
-          --enable-shmop \
           --enable-sockets \
-          --enable-ctype
+          --enable-tokenizer \
+          --enable-ctype \
+          --enable-fileinfo \
+          --enable-opcache
 
-    - name: Build PHP
+    - name: 🧰 Build PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
         make -j$(nproc)
 
-    - name: Save artifact
-      if: success()
+    - name: 🛋️ Install & Strip
+      run: |
+        make -C ${WORKDIR} install INSTALL_ROOT=$PWD/${OUTDIR}
+        $STRIP --strip-unneeded ${OUTDIR}/data/php/bin/php || true
+
+    - name: 📆 Package output
+      run: |
+        tar -czf php-7.4.33-ndk-r18b-arm32.tar.gz -C ${OUTDIR} .
+
+    - name: ☁️ Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: php-arm32
-        path: ${{ env.WORKDIR }}/sapi/cli/php
+        name: php-7.4.33-ndk-r18b-arm32
+        path: php-7.4.33-ndk-r18b-arm32.tar.gz
