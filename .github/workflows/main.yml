@@ -13,7 +13,7 @@ jobs:
 
     - name: ⚙️ Setup environment variables
       run: |
-        echo "NDK_VERSION=r18b" >> $GITHUB_ENV
+        echo "NDK_VERSION=r21e" >> $GITHUB_ENV
         echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
         echo "API_LEVEL=22" >> $GITHUB_ENV
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
