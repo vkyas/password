@@ -82,34 +82,43 @@ jobs:
         mkdir -p ${{ env.OUTDIR }}
 
     - name: Configure PHP
-      working-directory: ${{ env.WORKDIR }}
-      run: |
-        ../${{ env.PHP_SOURCE }}/configure \
-          --host=arm-linux-androideabi \
-          --build=x86_64-linux-gnu \
-          --prefix=/php \
-          --disable-all \
-          --enable-mbstring \
-          --enable-json \
-          --enable-session \
-          --enable-dom \
-          --enable-simplexml \
-          --enable-xml \
-          --enable-xmlreader \
-          --enable-xmlwriter \
-          --enable-phar \
-          --enable-posix \
-          --enable-tokenizer \
-          --with-libxml \
-          --with-zlib \
-          --without-iconv \
-          --without-pcre-jit \
-          --disable-cgi \
-          --disable-fpm \
-          CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$SYSROOT/usr/include" \
-          LDFLAGS="-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$SYSROOT/usr/lib -llog -landroid -fPIE -pie" \
-          CPPFLAGS="-I$SYSROOT/usr/include" \
-          LIBS="-lz"
+  working-directory: ${{ env.WORKDIR }}
+  env:
+    CC: arm-linux-androideabi-clang
+    CXX: arm-linux-androideabi-clang++
+    AR: arm-linux-androideabi-ar
+    RANLIB: arm-linux-androideabi-ranlib
+    SYSROOT: ${{ env.SYSROOT }}
+    ONIG_CFLAGS: ${{ env.ONIG_CFLAGS }}
+    ONIG_LIBS: ${{ env.ONIG_LIBS }}
+    PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
+  run: |
+    ../${{ env.PHP_SOURCE }}/configure \
+      --host=arm-linux-androideabi \
+      --build=x86_64-linux-gnu \
+      --prefix=/php \
+      --disable-all \
+      --enable-mbstring \
+      --enable-json \
+      --enable-session \
+      --enable-dom \
+      --enable-simplexml \
+      --enable-xml \
+      --enable-xmlreader \
+      --enable-xmlwriter \
+      --enable-phar \
+      --enable-posix \
+      --enable-tokenizer \
+      --with-libxml \
+      --with-zlib \
+      --without-iconv \
+      --without-pcre-jit \
+      --disable-cgi \
+      --disable-fpm \
+      CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$SYSROOT/usr/include $ONIG_CFLAGS" \
+      LDFLAGS="-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$SYSROOT/usr/lib -llog -landroid -fPIE -pie $ONIG_LIBS" \
+      CPPFLAGS="-I$SYSROOT/usr/include $ONIG_CFLAGS" \
+      LIBS="-lz $ONIG_LIBS"
 
     - name: Build PHP
       working-directory: ${{ env.WORKDIR }}
