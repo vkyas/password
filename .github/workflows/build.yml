@@ -222,14 +222,15 @@ jobs:
           exit 1
         fi
 
-    - name: 🧪 Check Makefile existence
+    - name: Debug config.log
+      if: failure()  # jalankan hanya jika step sebelumnya gagal
       working-directory: ${{ env.WORKDIR }}
       run: |
-        if [ ! -f Makefile ]; then
-          echo "::error ::Makefile not found! Showing last 50 lines of config.log:"
-          tail -n 50 config.log
-        exit 1
-        fi
+        echo "---- Showing last 200 lines of config.log ----"
+        tail -n 200 config.log
+        echo "---- Searching for errors in config.log ----"
+        grep -i -A20 -B20 error config.log || echo "No error found"
+
         
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
