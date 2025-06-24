@@ -88,6 +88,10 @@ jobs:
           --build=x86_64-pc-linux-gnu \
           --host=${{ env.HOST_TRIPLE }} \
           --prefix=/data/php \
+          --with-libxml \
+          --with-zlib \
+          --with-jpeg \
+          --with-png \
           --disable-all \
           --enable-mbstring \
           --enable-bcmath \
