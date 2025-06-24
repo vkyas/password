@@ -197,7 +197,8 @@ jobs:
           --with-png-dir=${PREFIX} \
           --with-freetype-dir=${PREFIX} \
           --with-libxml-dir=${PREFIX} \
-          --with-onig=${PREFIX}
+          #--with-onig=${PREFIX}
+          --with-libonig=${PREFIX}
           --disable-all \
           --enable-mbstring \
           --enable-bcmath \
