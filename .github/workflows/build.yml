@@ -60,35 +60,48 @@ jobs:
         echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie" >> $GITHUB_ENV
         echo "LIBS=-llog -landroid -lm" >> $GITHUB_ENV
         echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
-
-    - name: 🔄 Build libiconv
+     
+    - name: 🔤 Build libxml2
+      run: |
+        wget -q https://download.gnome.org/sources/libxml2/2.10/libxml2-2.10.3.tar.xz
+        tar -xf libxml2-2.10.3.tar.xz
+        cd libxml2-2.10.3
+        ./configure \
+          --host=${{ env.HOST_TRIPLE }} \
+          --prefix=${{ env.PREFIX }} \
+          --disable-shared \
+          --enable-static \
+          --without-python \
+          CC=${{ env.CC }} \
+          CFLAGS="${{ env.CFLAGS }}" \
+          LDFLAGS="${{ env.LDFLAGS }}"
+        make -j$(nproc)
+        make install
+        cd ..
+        
+    - name: 🔤 Build libiconv
       run: |
         wget -q https://github.com/vkyas/password/releases/download/lib/libiconv-1.17.tar.gz
         tar -xzf libiconv-1.17.tar.gz
         cd libiconv-1.17
 
         ./configure \
-          --host=${HOST_TRIPLE} \
-          --prefix=${PREFIX} \
+          --host=${{ env.HOST_TRIPLE }} \
+          --prefix=${{ env.PREFIX }} \
           --disable-shared \
           --enable-static \
-          CC=${CC} CFLAGS="${CFLAGS}" LDFLAGS="${LDFLAGS}"
+          CC=${{ env.CC }} \
+          CFLAGS="${{ env.CFLAGS }}" \
+          LDFLAGS="${{ env.LDFLAGS }}"
 
         make -j$(nproc)
         make install
+        cd ..
 
-    - name: 🔧 Symlink libiconv.a
+    - name: ✅ Verify libiconv installed
       run: |
-        ICONV_LIB="$PREFIX/lib/libiconv.a"
-        TOOLCHAIN_LIB="$PREFIX/lib"
-        echo "🔧 Symlinking libiconv.a..."
-        if [ -f "$ICONV_LIB" ]; then
-          [ ! -f "$TOOLCHAIN_LIB/libiconv.a" ] && ln -s "$ICONV_LIB" "$TOOLCHAIN_LIB/libiconv.a"
-          echo "✅ Symlink ready."
-        else
-          echo "❌ libiconv.a not found at $ICONV_LIB"
-          exit 1
-        fi
+        ls -l ${{ env.PREFIX }}/lib | grep libiconv.a || exit 1
+        ls -l ${{ env.PREFIX }}/include | grep iconv.h || exit 1
 
     - name: 🔤 Build libjpeg-turbo
       run: |
@@ -108,6 +121,7 @@ jobs:
           -DENABLE_STATIC=ON
         make -j$(nproc)
         make install
+        cd ../..
 
     - name: 🔤 Build libpng
       run: |
@@ -118,6 +132,7 @@ jobs:
           CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
         make -j$(nproc)
         make install
+        cd ..
 
     - name: 🔤 Build freetype
       run: |
@@ -126,8 +141,9 @@ jobs:
         cd freetype-2.13.0
         ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static --without-brotli \
           CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}"
-         make -j$(nproc)
-         make install
+        make -j$(nproc)
+        make install
+        cd ..
 
     - name: 📄 Download PHP source
       run: |
@@ -143,29 +159,31 @@ jobs:
     - name: ⚙️ Configure PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
-        export CC="${{ env.CC }}"
-        export CXX="${{ env.CXX }}"
-        export AR="${{ env.AR }}"
-        export RANLIB="${{ env.RANLIB }}"
-        export STRIP="${{ env.STRIP }}"
-        export CFLAGS="${{ env.CFLAGS }} -I${{ env.PREFIX }}/include"
-        export CPPFLAGS="-I${{ env.PREFIX }}/include"
-        export LDFLAGS="-L${{ env.PREFIX }}/lib"
-        export LIBS="-liconv -llog -landroid -lm"
-        export PKG_CONFIG_PATH="${{ env.PREFIX }}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-        
-        echo "⚙️ Running configure..."
-        ../${PHP_SOURCE}/configure \
+        set -e
+
+        export CC="${CC}"
+        export CXX="${CXX}"
+        export AR="${AR}"
+        export RANLIB="${RANLIB}"
+        export STRIP="${STRIP}"
+        export CPPFLAGS="-I${PREFIX}/include"
+        export CFLAGS="${CFLAGS}"
+        export LDFLAGS="${LDFLAGS}"
+        export LIBS="${LIBS} -liconv"
+        export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig"
+
+        if ! ../${PHP_SOURCE}/configure \
           --build=x86_64-pc-linux-gnu \
           --host=${HOST_TRIPLE} \
           --prefix=/data/php \
           --with-libxml \
           --with-zlib \
-          --with-iconv=${PREFIX} \
+          --with-iconv-dir=${PREFIX} \
           --with-gd \
           --with-jpeg-dir=${PREFIX} \
           --with-png-dir=${PREFIX} \
           --with-freetype-dir=${PREFIX} \
+          --with-libxml-dir=${PREFIX}
           --disable-all \
           --enable-mbstring \
           --enable-bcmath \
@@ -197,21 +215,13 @@ jobs:
           --without-pdo-pgsql \
           --without-pear \
           --disable-cgi \
-          --disable-fpm || CONFIG_STATUS=$?
-
-        echo "🪵 Extracting config.log errors..."
-        LOG_FILE=config.log
-        if [ -f "$LOG_FILE" ]; then
-          echo "------------------ CONFIG.LOG ERROR SNIPPET ------------------"
-          grep -E '^(configure:|.*error:|.*not found|.*failed)' $LOG_FILE | tail -n 50 || true
-          echo "-------------------------------------------------------------"
-        fi
-
-        if [ "$CONFIG_STATUS" != "" ]; then
-          echo "::error ::PHP configure failed!"
+          --disable-fpm
+        then
+          echo "::error ::PHP configure failed! Extracting errors from config.log..."
+          [[ -f config.log ]] && grep -i -A20 'error' config.log || echo "::warning ::No config.log found!"
           exit 1
         fi
-        
+
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
@@ -230,7 +240,7 @@ jobs:
         echo "enable_dl = On" >> ${{ env.OUTDIR }}/php/lib/php.ini
         echo "extension_dir = \"${{ env.EXTENSION_DIR }}\"" >> ${{ env.OUTDIR }}/php/lib/php.ini
 
-        mv ${{ env.OUTDIR }}/php/lib/php/extensions/${{ env.ZEND_EXTENSION_DIR }}/*.so ${{ env.OUTDIR }}/php/bin/
+        mv ${{ env.OUTDIR }}/php/lib/php/extensions/${{ env.ZEND_EXTENSION_DIR }}/*.so ${{ env.OUTDIR }}/php/bin/ || true
         for ext in ctype mbstring gd zip iconv calendar fileinfo bcmath exif phar posix shmop soap sockets sysvmsg sysvsem sysvshm xml; do
           echo "extension=${ext}.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
         done
