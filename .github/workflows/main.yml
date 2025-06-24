@@ -1,42 +1,112 @@
-name: Build for Android ARMv7 (API 14+)
+name: Build PHP for ARMv7a Android
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
-  build-android-armv7:
+  build:
     runs-on: ubuntu-latest
 
-    env:
-      ANDROID_API: 14
-      ARCH: armeabi-v7a
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Set up Android NDK
-        uses: nmeum/setup-ndk@v1
-        with:
-          ndk-version: r26d
+    - name: Setup environment
+      run: |
+        echo "NDK_VERSION=r25b" >> $GITHUB_ENV
+        echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
+        echo "API_LEVEL=19" >> $GITHUB_ENV
+        echo "TARGET=armv7a-linux-androideabi" >> $GITHUB_ENV
+        echo "TOOLCHAIN=arm-linux-androideabi-4.9" >> $GITHUB_ENV
+        echo "WORKDIR=build-arm32" >> $GITHUB_ENV
+        echo "OUTDIR=output-arm32" >> $GITHUB_ENV
 
-      - name: Set up Build Directory
-        run: mkdir -p android-arm32-build
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          autoconf \
+          automake \
+          libtool \
+          pkg-config \
+          bison \
+          re2c
 
-      - name: Build Example App for Android ARMv7
-        working-directory: android-arm32-build
-        run: |
-          export CC=armv7a-linux-androideabi${ANDROID_API}-clang
-          export CXX=armv7a-linux-androideabi${ANDROID_API}-clang++
-          echo '#include <stdio.h>
-          int main() { printf("Hello from Android ARM32!\\n"); return 0; }' > hello.c
-          
-          $CC hello.c -o hello_arm32
+    - name: Download Android NDK
+      run: |
+        wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        echo "NDK_HOME=$(pwd)/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-arm32-binary
-          path: android-arm32-build/hello_arm32
+    - name: Download PHP source
+      run: |
+        wget -q https://www.php.net/distributions/php-${{ env.PHP_VERSION }}.tar.gz
+        tar -xzf php-${{ env.PHP_VERSION }}.tar.gz
+        echo "PHP_SOURCE=php-${{ env.PHP_VERSION }}" >> $GITHUB_ENV
+
+    - name: Create build environment
+      run: |
+        mkdir -p ${{ env.WORKDIR }}
+        mkdir -p ${{ env.OUTDIR }}
+
+    - name: Setup toolchain
+      run: |
+        echo "SYSROOT=${{ env.NDK_HOME }}/platforms/android-${{ env.API_LEVEL }}/arch-arm" >> $GITHUB_ENV
+        echo "TOOLCHAIN_PATH=${{ env.NDK_HOME }}/toolchains/${{ env.TOOLCHAIN }}/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
+        echo "CC=${{ env.TOOLCHAIN_PATH }}/arm-linux-androideabi-gcc --sysroot=${{ env.SYSROOT }}" >> $GITHUB_ENV
+        echo "CXX=${{ env.TOOLCHAIN_PATH }}/arm-linux-androideabi-g++ --sysroot=${{ env.SYSROOT }}" >> $GITHUB_ENV
+        echo "AR=${{ env.TOOLCHAIN_PATH }}/arm-linux-androideabi-ar" >> $GITHUB_ENV
+        echo "RANLIB=${{ env.TOOLCHAIN_PATH }}/arm-linux-androideabi-ranlib" >> $GITHUB_ENV
+        echo "STRIP=${{ env.TOOLCHAIN_PATH }}/arm-linux-androideabi-strip" >> $GITHUB_ENV
+        echo "PATH=${{ env.TOOLCHAIN_PATH }}:$PATH" >> $GITHUB_ENV
+
+    - name: Configure PHP
+      working-directory: ${{ env.WORKDIR }}
+      run: |
+        ../${{ env.PHP_SOURCE }}/configure \
+          --host=arm-linux-androideabi \
+          --target=arm-linux-androideabi \
+          --prefix=/php \
+          --disable-all \
+          --without-iconv \
+          --without-pdo-sqlite \
+          --without-sqlite3 \
+          --enable-mbstring \
+          --enable-json \
+          --enable-session \
+          --enable-hash \
+          --enable-libxml \
+          --enable-dom \
+          --enable-simplexml \
+          --enable-xml \
+          --enable-xmlreader \
+          --enable-xmlwriter \
+          --enable-phar \
+          --enable-posix \
+          --enable-tokenizer \
+          --with-libxml-dir="${{ env.SYSROOT }}/usr" \
+          --with-zlib-dir="${{ env.SYSROOT }}/usr" \
+          CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon" \
+          LDFLAGS="-Wl,--fix-cortex-a8 -Wl,--no-warn-mismatch -llog -landroid"
+
+    - name: Build PHP
+      working-directory: ${{ env.WORKDIR }}
+      run: |
+        make -j$(nproc)
+        make install INSTALL_ROOT=$(pwd)/../${{ env.OUTDIR }}
+
+    - name: Strip binaries
+      run: |
+        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/bin/php
+        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/bin/php-cgi
+        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/lib/php/extensions/no-debug-non-zts-20190902/*.so
+
+    - name: Package artifacts
+      run: |
+        tar -czf php-arm32-android.tar.gz -C ${{ env.OUTDIR }} .
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: php-arm32-android
+        path: php-arm32-android.tar.gz
