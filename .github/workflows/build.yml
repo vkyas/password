@@ -16,7 +16,7 @@ jobs:
 
     - name: Setup environment variables
       run: |
-        echo "NDK_VERSION=r23c" >> $GITHUB_ENV
+        echo "NDK_VERSION=r25c" >> $GITHUB_ENV
         echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
         echo "CURL_VERSION=8.8.0" >> $GITHUB_ENV
         echo "OPENSSL_VERSION=1.1.1w" >> $GITHUB_ENV
