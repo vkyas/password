@@ -16,7 +16,7 @@ jobs:
         echo "NDK_VERSION=r25c" >> $GITHUB_ENV
         echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
         echo "CURL_VERSION=8.8.0" >> $GITHUB_ENV
-        echo "OPENSSL_VERSION=1.1.1m" >> $GITHUB_ENV
+        echo "OPENSSL_VERSION=1.1.1w" >> $GITHUB_ENV
         echo "API_LEVEL=19" >> $GITHUB_ENV
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
@@ -62,17 +62,30 @@ jobs:
         echo "LIBS=\"-llog -landroid\"" >> $GITHUB_ENV
         echo "PATH=${{ env.TOOLCHAIN }}/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Build OpenSSL (Fixed)
+    - name: Fix OpenSSL PATH issue
+      run: |
+        # Buat symlink untuk mengelabui OpenSSL
+        sudo ln -s ${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang /usr/local/bin/arm-linux-androideabi-gcc
+        sudo ln -s ${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang /usr/local/bin/arm-linux-androideabi-gcc-4.9
+        
+        # Verifikasi
+        echo "--- Symlinks created ---"
+        ls -l /usr/local/bin/arm-linux-androideabi-gcc*
+        echo "--- PATH: $PATH"
+
+    - name: Build OpenSSL (Fixed PATH)
       run: |
         wget -q https://www.openssl.org/source/openssl-${{ env.OPENSSL_VERSION }}.tar.gz
         tar -xzf openssl-${{ env.OPENSSL_VERSION }}.tar.gz
         cd openssl-${{ env.OPENSSL_VERSION }}
         
-        # Gunakan toolchain NDK langsung
+        # Gunakan environment yang sudah disetup
         export CC="${{ env.CC }}"
         export AR="${{ env.AR }}"
         export RANLIB="${{ env.RANLIB }}"
         export STRIP="${{ env.STRIP }}"
+        export CFLAGS="${{ env.CFLAGS }}"
+        export LDFLAGS="${{ env.LDFLAGS }}"
         
         # Konfigurasi dengan parameter yang benar
         ./Configure android-arm \
