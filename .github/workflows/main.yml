@@ -12,7 +12,7 @@ jobs:
       API_LEVEL: 22
       WORKDIR: build-arm32
       OUTDIR: output-arm32
-      HOST_TRIPLE: arm-linux-androideabi
+      HOST_TRIPLE: armv7a-linux-androideabi
       EXTENSION_DIR: /data/adb/php7/files/bin
       ZEND_EXTENSION_DIR: no-debug-non-zts-20190902
 
