@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04  # Spesifik versi Ubuntu 24.04
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout repository
@@ -17,9 +17,9 @@ jobs:
         echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
         echo "API_LEVEL=19" >> $GITHUB_ENV
         echo "TARGET=armv7a-linux-androideabi" >> $GITHUB_ENV
-        echo "TOOLCHAIN=llvm" >> $GITHUB_ENV  # Gunakan toolchain modern
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
+        echo "TOOLCHAIN_DIR=arm-linux-androideabi-toolchain" >> $GITHUB_ENV
 
     - name: Install dependencies
       run: |
@@ -33,13 +33,42 @@ jobs:
           re2c \
           make \
           wget \
-          unzip
+          unzip \
+          file \
+          python3
 
     - name: Download Android NDK
       run: |
         wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
         unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
         echo "NDK_HOME=$(pwd)/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+
+    - name: Create standalone toolchain
+      run: |
+        # Buat toolchain khusus untuk ARMv7a
+        ${{ env.NDK_HOME }}/build/tools/make_standalone_toolchain.py \
+          --arch arm \
+          --api ${{ env.API_LEVEL }} \
+          --install-dir ${{ env.TOOLCHAIN_DIR }} \
+          --force
+        
+        echo "TOOLCHAIN_PATH=$(pwd)/${{ env.TOOLCHAIN_DIR }}/bin" >> $GITHUB_ENV
+        echo "SYSROOT=$(pwd)/${{ env.TOOLCHAIN_DIR }}/sysroot" >> $GITHUB_ENV
+        echo "PATH=$(pwd)/${{ env.TOOLCHAIN_DIR }}/bin:$PATH" >> $GITHUB_ENV
+
+    - name: Setup compiler
+      run: |
+        echo "CC=arm-linux-androideabi-clang" >> $GITHUB_ENV
+        echo "CXX=arm-linux-androideabi-clang++" >> $GITHUB_ENV
+        echo "AR=arm-linux-androideabi-ar" >> $GITHUB_ENV
+        echo "RANLIB=arm-linux-androideabi-ranlib" >> $GITHUB_ENV
+        echo "STRIP=arm-linux-androideabi-strip" >> $GITHUB_ENV
+
+    - name: Test compiler
+      run: |
+        echo "int main() { return 0; }" > test.c
+        arm-linux-androideabi-clang test.c -o test -pie
+        file test
 
     - name: Download PHP source
       run: |
@@ -52,30 +81,17 @@ jobs:
         mkdir -p ${{ env.WORKDIR }}
         mkdir -p ${{ env.OUTDIR }}
 
-    - name: Setup toolchain
-      run: |
-        echo "TOOLCHAIN_PATH=${{ env.NDK_HOME }}/toolchains/${{ env.TOOLCHAIN }}/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
-        echo "SYSROOT=${{ env.NDK_HOME }}/toolchains/${{ env.TOOLCHAIN }}/prebuilt/linux-x86_64/sysroot" >> $GITHUB_ENV
-        echo "CC=${{ env.TOOLCHAIN_PATH }}/clang -target armv7a-linux-androideabi${{ env.API_LEVEL }}" >> $GITHUB_ENV
-        echo "CXX=${{ env.TOOLCHAIN_PATH }}/clang++ -target armv7a-linux-androideabi${{ env.API_LEVEL }}" >> $GITHUB_ENV
-        echo "AR=${{ env.TOOLCHAIN_PATH }}/llvm-ar" >> $GITHUB_ENV
-        echo "RANLIB=${{ env.TOOLCHAIN_PATH }}/llvm-ranlib" >> $GITHUB_ENV
-        echo "STRIP=${{ env.TOOLCHAIN_PATH }}/llvm-strip" >> $GITHUB_ENV
-        echo "PATH=${{ env.TOOLCHAIN_PATH }}:$PATH" >> $GITHUB_ENV
-
     - name: Configure PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
         ../${{ env.PHP_SOURCE }}/configure \
-          --host=armv7a-linux-androideabi \
-          --target=armv7a-linux-androideabi \
+          --host=arm-linux-androideabi \
+          --build=x86_64-linux-gnu \
           --prefix=/php \
           --disable-all \
           --enable-mbstring \
           --enable-json \
           --enable-session \
-          --enable-hash \
-          --enable-libxml \
           --enable-dom \
           --enable-simplexml \
           --enable-xml \
@@ -86,8 +102,14 @@ jobs:
           --enable-tokenizer \
           --with-libxml \
           --with-zlib \
-          CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC" \
-          LDFLAGS="-Wl,--fix-cortex-a8 -Wl,--no-warn-mismatch -llog -landroid -fPIE -pie"
+          --without-iconv \
+          --without-pcre-jit \
+          --disable-cgi \
+          --disable-fpm \
+          CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$SYSROOT/usr/include" \
+          LDFLAGS="-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$SYSROOT/usr/lib -llog -landroid -fPIE -pie" \
+          CPPFLAGS="-I$SYSROOT/usr/include" \
+          LIBS="-lz"
 
     - name: Build PHP
       working-directory: ${{ env.WORKDIR }}
@@ -97,16 +119,21 @@ jobs:
 
     - name: Strip binaries
       run: |
-        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/bin/php
-        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/bin/php-cgi
-        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/lib/php/extensions/no-debug-non-zts-20190902/*.so
+        arm-linux-androideabi-strip --strip-unneeded ${{ env.OUTDIR }}/php/bin/php
+        find ${{ env.OUTDIR }}/php/lib/php/extensions -name "*.so" -exec arm-linux-androideabi-strip --strip-unneeded {} \;
+
+    - name: Verify binary
+      run: |
+        file ${{ env.OUTDIR }}/php/bin/php
+        # Periksa apakah binary ARM
+        readelf -h ${{ env.OUTDIR }}/php/bin/php | grep 'Machine:'
 
     - name: Package artifacts
       run: |
         tar -czf php-arm32-android.tar.gz -C ${{ env.OUTDIR }} .
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v4  # Versi diperbarui
+      uses: actions/upload-artifact@v4
       with:
         name: php-arm32-android
         path: php-arm32-android.tar.gz
