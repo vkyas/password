@@ -5,35 +5,23 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04  # Spesifik versi Ubuntu 24.04
-
+    runs-on: ubuntu-24.04
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
     - name: Setup environment
       run: |
         echo "NDK_VERSION=r25c" >> $GITHUB_ENV
         echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
         echo "API_LEVEL=19" >> $GITHUB_ENV
-        echo "TARGET=armv7a-linux-androideabi" >> $GITHUB_ENV
-        echo "TOOLCHAIN=llvm" >> $GITHUB_ENV  # Gunakan toolchain modern
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
 
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          autoconf \
-          automake \
-          libtool \
-          pkg-config \
-          bison \
-          re2c \
-          make \
-          wget \
-          unzip
+        sudo apt-get install -y autoconf automake libtool pkg-config bison re2c make wget unzip libxml2-dev zlib1g-dev || true
+        # Note: libxml2-dev/zlib1g-dev untuk host build tools, bukan untuk PHP target Android.
 
     - name: Download Android NDK
       run: |
@@ -47,17 +35,15 @@ jobs:
         tar -xzf php-${{ env.PHP_VERSION }}.tar.gz
         echo "PHP_SOURCE=php-${{ env.PHP_VERSION }}" >> $GITHUB_ENV
 
-    - name: Create build environment
+    - name: Create build dirs
       run: |
-        mkdir -p ${{ env.WORKDIR }}
-        mkdir -p ${{ env.OUTDIR }}
+        mkdir -p ${{ env.WORKDIR }} ${{ env.OUTDIR }}
 
-    - name: Setup toolchain
+    - name: Setup toolchain env vars
       run: |
-        echo "TOOLCHAIN_PATH=${{ env.NDK_HOME }}/toolchains/${{ env.TOOLCHAIN }}/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
-        echo "SYSROOT=${{ env.NDK_HOME }}/toolchains/${{ env.TOOLCHAIN }}/prebuilt/linux-x86_64/sysroot" >> $GITHUB_ENV
-        echo "CC=${{ env.TOOLCHAIN_PATH }}/clang -target armv7a-linux-androideabi${{ env.API_LEVEL }}" >> $GITHUB_ENV
-        echo "CXX=${{ env.TOOLCHAIN_PATH }}/clang++ -target armv7a-linux-androideabi${{ env.API_LEVEL }}" >> $GITHUB_ENV
+        echo "TOOLCHAIN_PATH=${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
+        echo "CC=${{ env.TOOLCHAIN_PATH }}/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang" >> $GITHUB_ENV
+        echo "CXX=${{ env.TOOLCHAIN_PATH }}/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang++" >> $GITHUB_ENV
         echo "AR=${{ env.TOOLCHAIN_PATH }}/llvm-ar" >> $GITHUB_ENV
         echo "RANLIB=${{ env.TOOLCHAIN_PATH }}/llvm-ranlib" >> $GITHUB_ENV
         echo "STRIP=${{ env.TOOLCHAIN_PATH }}/llvm-strip" >> $GITHUB_ENV
@@ -67,24 +53,15 @@ jobs:
       working-directory: ${{ env.WORKDIR }}
       run: |
         ../${{ env.PHP_SOURCE }}/configure \
-          --host=armv7a-linux-androideabi \
-          --target=armv7a-linux-androideabi \
+          --host=arm-linux-androideabi \
+          --target=arm-linux-androideabi \
           --prefix=/php \
           --disable-all \
           --enable-mbstring \
           --enable-json \
           --enable-session \
-          --enable-hash \
-          --enable-libxml \
-          --enable-dom \
-          --enable-simplexml \
-          --enable-xml \
-          --enable-xmlreader \
-          --enable-xmlwriter \
-          --enable-phar \
           --enable-posix \
           --enable-tokenizer \
-          --with-libxml \
           --with-zlib \
           CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC" \
           LDFLAGS="-Wl,--fix-cortex-a8 -Wl,--no-warn-mismatch -llog -landroid -fPIE -pie"
@@ -97,16 +74,16 @@ jobs:
 
     - name: Strip binaries
       run: |
-        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/bin/php
-        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/bin/php-cgi
-        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/lib/php/extensions/no-debug-non-zts-20190902/*.so
+        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/bin/php || true
+        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/bin/php-cgi || true
+        ${{ env.STRIP }} ${{ env.OUTDIR }}/php/lib/php/extensions/no-debug-non-zts-20190902/*.so || true
 
-    - name: Package artifacts
+    - name: Package artifact
       run: |
         tar -czf php-arm32-android.tar.gz -C ${{ env.OUTDIR }} .
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4  # Versi diperbarui
+    - name: Upload
+      uses: actions/upload-artifact@v4
       with:
         name: php-arm32-android
         path: php-arm32-android.tar.gz
