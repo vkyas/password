@@ -33,10 +33,10 @@ jobs:
           wget https://zlib.net/zlib-1.3.1.tar.gz
           tar -xvzf zlib-1.3.1.tar.gz
           cd zlib-1.3.1
-          mkdir -p /zlib-arm32/lib
+          mkdir -p /home/runner/zlib-arm32/lib
           CC=arm-linux-gnueabihf-gcc \
           CFLAGS="-Os" \
-          ./configure --prefix=/zlib-arm32
+          ./configure --prefix=/home/runner/zlib-arm32
           make -j$(nproc)
           make install
 
@@ -48,7 +48,7 @@ jobs:
           CC=arm-linux-gnueabihf-gcc \
           CFLAGS="-Os" \
           ./configure --host=arm-linux-gnueabihf \
-          --prefix=/libxml2-arm32 \
+          --prefix=/home/runner/libxml2-arm32 \
           --without-python \
           --without-lzma
           make -j$(nproc)
@@ -62,7 +62,7 @@ jobs:
           CC=arm-linux-gnueabihf-gcc \
           CFLAGS="-Os" \
           ./Configure linux-armv4 \
-          --prefix=/openssl-arm32 \
+          --prefix=/home/runner/openssl-arm32 \
           --cross-compile-prefix=arm-linux-gnueabihf-
           make -j$(nproc)
           make install_sw
@@ -77,19 +77,19 @@ jobs:
         run: |
           cd php-src
           ./buildconf --force
-          PKG_CONFIG_PATH=/libxml2-arm32/lib/pkgconfig:/zlib-arm32/lib/pkgconfig:/openssl-arm32/lib/pkgconfig \
+          PKG_CONFIG_PATH=/home/runner/libxml2-arm32/lib/pkgconfig:/home/runner/zlib-arm32/lib/pkgconfig:/home/runner/openssl-arm32/lib/pkgconfig \
           CC=arm-linux-gnueabihf-gcc \
           CXX=arm-linux-gnueabihf-g++ \
           CFLAGS="-Os" \
           ./configure \
           --host=arm-linux-gnueabihf \
-          --prefix=/php-arm32 \
+          --prefix=/home/runner/php-arm32 \
           --disable-all \
           --enable-cli \
           --enable-embed \
-          --with-zlib=/zlib-arm32 \
-          --with-libxml=/libxml2-arm32 \
-          --with-openssl=/openssl-arm32
+          --with-zlib=/home/runner/zlib-arm32 \
+          --with-libxml=/home/runner/libxml2-arm32 \
+          --with-openssl=/home/runner/openssl-arm32
 
       - name: Build PHP
         run: |
@@ -103,14 +103,14 @@ jobs:
 
       - name: Verify binary
         run: |
-          file /php-arm32/bin/php
-          /php-arm32/bin/php -v || true
+          file /home/runner/php-arm32/bin/php
+          /home/runner/php-arm32/bin/php -v || true
 
       - name: Upload PHP binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: php-arm32
-          path: /php-arm32
+          path: /home/runner/php-arm32
           retention-days: 7
 
       - name: Show config log on failure
