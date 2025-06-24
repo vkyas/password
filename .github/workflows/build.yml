@@ -60,6 +60,24 @@ jobs:
         echo LIBS="-llog -landroid -lm" >> $GITHUB_ENV
         echo PATH=$TOOLCHAIN/bin:$PATH >> $GITHUB_ENV
 
+    - name: 🔤 Build libiconv
+      run: |
+        wget -q https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz
+        tar -xzf libiconv-1.17.tar.gz
+        cd libiconv-1.17
+
+        ./configure \
+          --host=${{ env.HOST_TRIPLE }} \
+          --prefix=${{ env.PREFIX }} \
+          --disable-shared \
+          --enable-static \
+          CC=${{ env.CC }} \
+          CFLAGS="${{ env.CFLAGS }}" \
+          LDFLAGS="${{ env.LDFLAGS }}"
+
+        make -j$(nproc)
+        make install
+        
     - name: 📄 Download PHP
       run: |
         wget -q https://www.php.net/distributions/php-${{ env.PHP_VERSION }}.tar.gz
