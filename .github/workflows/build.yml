@@ -35,9 +35,8 @@ jobs:
       run: |
         wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
         unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
-      env:
-        NDK_HOME: ${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}
-
+        echo "NDK_HOME=${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+    
     - name: Create standalone toolchain
       run: |
         ${{ env.NDK_HOME }}/build/tools/make_standalone_toolchain.py \
@@ -45,11 +44,6 @@ jobs:
           --api ${{ env.API_LEVEL }} \
           --install-dir ${{ env.TOOLCHAIN_DIR }} \
           --force
-
-    - name: Setup path to toolchain
-      run: |
-        echo "TOOLCHAIN_PATH=${{ github.workspace }}/${{ env.TOOLCHAIN_DIR }}/bin" >> $GITHUB_ENV
-        echo "PATH=${{ github.workspace }}/${{ env.TOOLCHAIN_DIR }}/bin:$PATH" >> $GITHUB_ENV
 
     - name: Build OpenSSL
       run: |
