@@ -16,10 +16,9 @@ jobs:
         echo "NDK_VERSION=r25c" >> $GITHUB_ENV
         echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
         echo "API_LEVEL=19" >> $GITHUB_ENV
-        echo "TARGET=armv7a-linux-androideabi" >> $GITHUB_ENV
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
-        echo "TOOLCHAIN_DIR=arm-linux-androideabi-toolchain" >> $GITHUB_ENV
+        echo "TOOLCHAIN_DIR=arm-toolchain" >> $GITHUB_ENV
 
     - name: Install dependencies
       run: |
@@ -35,7 +34,16 @@ jobs:
           wget \
           unzip \
           file \
-          python3
+          python3 \
+          libssl-dev \
+          zlib1g-dev \
+          libargon2-dev \
+          libsodium-dev \
+          libcurl4-openssl-dev \
+          sqlite3 \
+          libsqlite3-dev \
+          libonig-dev \
+          libxml2-dev
 
     - name: Download Android NDK
       run: |
@@ -45,7 +53,6 @@ jobs:
 
     - name: Create standalone toolchain
       run: |
-        # Buat toolchain khusus untuk ARMv7a
         ${{ env.NDK_HOME }}/build/tools/make_standalone_toolchain.py \
           --arch arm \
           --api ${{ env.API_LEVEL }} \
@@ -81,50 +88,60 @@ jobs:
         mkdir -p ${{ env.WORKDIR }}
         mkdir -p ${{ env.OUTDIR }}
 
-    - name: Configure PHP
-  working-directory: ${{ env.WORKDIR }}
-  env:
-    CC: arm-linux-androideabi-clang
-    CXX: arm-linux-androideabi-clang++
-    AR: arm-linux-androideabi-ar
-    RANLIB: arm-linux-androideabi-ranlib
-    SYSROOT: ${{ env.SYSROOT }}
-    ONIG_CFLAGS: ${{ env.ONIG_CFLAGS }}
-    ONIG_LIBS: ${{ env.ONIG_LIBS }}
-    PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
-  run: |
-    ../${{ env.PHP_SOURCE }}/configure \
-      --host=arm-linux-androideabi \
-      --build=x86_64-linux-gnu \
-      --prefix=/php \
-      --disable-all \
-      --enable-mbstring \
-      --enable-json \
-      --enable-session \
-      --enable-dom \
-      --enable-simplexml \
-      --enable-xml \
-      --enable-xmlreader \
-      --enable-xmlwriter \
-      --enable-phar \
-      --enable-posix \
-      --enable-tokenizer \
-      --with-libxml \
-      --with-zlib \
-      --without-iconv \
-      --without-pcre-jit \
-      --disable-cgi \
-      --disable-fpm \
-      CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$SYSROOT/usr/include $ONIG_CFLAGS" \
-      LDFLAGS="-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$SYSROOT/usr/lib -llog -landroid -fPIE -pie $ONIG_LIBS" \
-      CPPFLAGS="-I$SYSROOT/usr/include $ONIG_CFLAGS" \
-      LIBS="-lz $ONIG_LIBS"
+    - name: Configure PHP (Optimized for Android)
+      working-directory: ${{ env.WORKDIR }}
+      run: |
+        ../${{ env.PHP_SOURCE }}/configure \
+          --host=arm-linux-androideabi \
+          --prefix=/php \
+          --disable-all \
+          --enable-bcmath \
+          --enable-mbstring \
+          --enable-json \
+          --enable-session \
+          --enable-shmop \
+          --enable-sockets \
+          --enable-sysvmsg \
+          --enable-sysvsem \
+          --enable-sysvshm \
+          --enable-dom \
+          --enable-simplexml \
+          --enable-xml \
+          --enable-xmlreader \
+          --enable-xmlwriter \
+          --enable-phar \
+          --enable-posix \
+          --enable-tokenizer \
+          --with-libxml \
+          --with-zlib \
+          --with-curl \
+          --without-pear \
+          --with-openssl \
+          --with-password-argon2 \
+          --with-sodium \
+          --without-iconv \
+          --without-pcre-jit \
+          --disable-cgi \
+          --disable-fpm \
+          CFLAGS="-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$SYSROOT/usr/include" \
+          LDFLAGS="-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$SYSROOT/usr/lib -llog -landroid -fPIE -pie" \
+          CPPFLAGS="-I$SYSROOT/usr/include" \
+          LIBS="-lz"
 
     - name: Build PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
         make -j$(nproc)
         make install INSTALL_ROOT=$(pwd)/../${{ env.OUTDIR }}
+
+    - name: Post-install steps
+      run: |
+        # Copy PHP configuration
+        cp ${{ env.PHP_SOURCE }}/php.ini-development ${{ env.OUTDIR }}/php/lib/php.ini
+        
+        # Modify php.ini for Android
+        sed -i 's/;date.timezone =/date.timezone = UTC/' ${{ env.OUTDIR }}/php/lib/php.ini
+        sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/' ${{ env.OUTDIR }}/php/lib/php.ini
 
     - name: Strip binaries
       run: |
@@ -134,7 +151,6 @@ jobs:
     - name: Verify binary
       run: |
         file ${{ env.OUTDIR }}/php/bin/php
-        # Periksa apakah binary ARM
         readelf -h ${{ env.OUTDIR }}/php/bin/php | grep 'Machine:'
 
     - name: Package artifacts
