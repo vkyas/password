@@ -185,56 +185,54 @@ jobs:
         export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
     
         if ! ../${PHP_SOURCE}/configure \
-          --build=x86_64-pc-linux-gnu \
-          --host=${HOST_TRIPLE} \
-          --prefix=/data/php \
-          --with-libxml \
-          --with-zlib \
-          --with-iconv=${PREFIX} \
-          --with-gd \
-          --with-jpeg=${PREFIX} \
-          --with-png=${PREFIX} \
-          --with-freetype=${PREFIX} \
-          --with-oniguruma=${PREFIX} \
-          --disable-all \
-          --disable-dns \  # ← ini penting
-          --enable-mbstring \
-          --enable-bcmath \
-          --enable-session \
-          --enable-posix \
-          --enable-sockets \
-          --enable-shmop \
-          --enable-sysvmsg \
-          --enable-sysvsem \
-          --enable-sysvshm \
-          --enable-tokenizer \
-          --enable-xml \
-          --enable-dom \
-          --enable-simplexml \
-          --enable-xmlreader \
-          --enable-xmlwriter \
-          --enable-soap \
-          --enable-phar \
-          --enable-fileinfo \
-          --enable-calendar \
-          --enable-ftp \
-          --enable-gd \
-          --enable-exif \
-          --enable-opcache \
-          --enable-ctype \
-          --without-bz2 \
-          --without-xsl \
-          --without-readline \
-          --without-ldap \
-          --without-pdo-pgsql \
-          --without-pear \
-          --disable-cgi \
-          --disable-fpm
-        then
-          echo "::error ::PHP configure failed! Extracting errors from config.log..."
-          [[ -f config.log ]] && grep -i -A20 'error' config.log || echo "::warning ::No config.log found!"
-          exit 1
-        fi
+        --build=x86_64-pc-linux-gnu \
+        --host=${HOST_TRIPLE} \
+        --prefix=/data/php \
+        --with-libxml \
+        --with-zlib \
+        --with-iconv=${PREFIX} \
+        --with-gd \
+        --with-onig \
+        --disable-all \
+        --disable-dns \
+        --enable-mbstring \
+        --enable-bcmath \
+        --enable-session \
+        --enable-posix \
+        --enable-sockets \
+        --enable-shmop \
+        --enable-sysvmsg \
+        --enable-sysvsem \
+        --enable-sysvshm \
+        --enable-tokenizer \
+        --enable-xml \
+        --enable-dom \
+        --enable-simplexml \
+        --enable-xmlreader \
+        --enable-xmlwriter \
+        --enable-soap \
+        --enable-phar \
+        --enable-fileinfo \
+        --enable-calendar \
+        --enable-ftp \
+        --enable-gd \
+        --enable-exif \
+        --enable-opcache \
+        --enable-ctype \
+        --without-bz2 \
+        --without-xsl \
+        --without-readline \
+        --without-ldap \
+        --without-pdo-pgsql \
+        --without-pear \
+        --disable-cgi \
+        --disable-fpm
+      then
+        echo "::error ::PHP configure failed! Extracting errors from config.log..."
+        [[ -f config.log ]] && grep -i -A20 'error' config.log || echo "::warning ::No config.log found!"
+        exit 1
+      fi
+
         
     - name: Debug config.log
       if: failure()  # jalankan hanya jika step sebelumnya gagal
