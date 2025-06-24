@@ -18,10 +18,11 @@ jobs:
         echo "API_LEVEL=19" >> $GITHUB_ENV
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
-        echo "TOOLCHAIN=${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
-        echo "SYSROOT=${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot" >> $GITHUB_ENV
-        echo "PREFIX=${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr" >> $GITHUB_ENV
-
+        echo "NDK_HOME=${{ github.workspace }}/android-ndk-r25c" >> $GITHUB_ENV
+        echo "TOOLCHAIN=${{ github.workspace }}/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
+        echo "SYSROOT=${{ github.workspace }}/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/sysroot" >> $GITHUB_ENV
+        echo "PREFIX=${{ github.workspace }}/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr" >> $GITHUB_ENV
+        
     - name: 🧰 Install dependencies
       run: |
         sudo apt-get update
