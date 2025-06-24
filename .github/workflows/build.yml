@@ -50,57 +50,31 @@ jobs:
         unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
         echo "NDK_HOME=$(pwd)/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
-    - name: Setup compiler (Fixed)
+    - name: Setup compiler
       run: |
-        # Perbaikan: Hindari spasi dalam deklarasi variabel
         echo "CC=${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang" >> $GITHUB_ENV
         echo "CXX=${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang++" >> $GITHUB_ENV
         echo "AR=${{ env.TOOLCHAIN }}/bin/llvm-ar" >> $GITHUB_ENV
         echo "RANLIB=${{ env.TOOLCHAIN }}/bin/llvm-ranlib" >> $GITHUB_ENV
         echo "STRIP=${{ env.TOOLCHAIN }}/bin/llvm-strip" >> $GITHUB_ENV
-        
-        # Perbaikan: Gunakan format yang benar untuk flag dengan spasi
         echo "CFLAGS='-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I${{ env.PREFIX }}/include'" >> $GITHUB_ENV
         echo "LDFLAGS='-Wl,--fix-cortex-a8 -Wl,--no-undefined -L${{ env.PREFIX }}/lib -fPIE -pie'" >> $GITHUB_ENV
         echo "LIBS='-llog -landroid'" >> $GITHUB_ENV
         echo "PATH=${{ env.TOOLCHAIN }}/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Fix OpenSSL PATH issue
+    - name: Install prebuilt OpenSSL
       run: |
-        # Buat symlink untuk mengelabui OpenSSL
-        sudo ln -s ${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang /usr/local/bin/arm-linux-androideabi-gcc
-        sudo ln -s ${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang /usr/local/bin/arm-linux-androideabi-gcc-4.9
+        # Salin OpenSSL dari NDK
+        mkdir -p ${{ env.PREFIX }}/lib
+        mkdir -p ${{ env.PREFIX }}/include
+        
+        cp ${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi/libcrypto.so ${{ env.PREFIX }}/lib/
+        cp ${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi/libssl.so ${{ env.PREFIX }}/lib/
+        cp -r ${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/openssl ${{ env.PREFIX }}/include/
         
         # Verifikasi
-        echo "--- Symlinks created ---"
-        ls -l /usr/local/bin/arm-linux-androideabi-gcc*
-        echo "--- PATH: $PATH"
-
-    - name: Build OpenSSL (Fixed PATH)
-      run: |
-        wget -q https://www.openssl.org/source/openssl-${{ env.OPENSSL_VERSION }}.tar.gz
-        tar -xzf openssl-${{ env.OPENSSL_VERSION }}.tar.gz
-        cd openssl-${{ env.OPENSSL_VERSION }}
-        
-        # Gunakan environment yang sudah disetup
-        export CC="$CC"
-        export AR="$AR"
-        export RANLIB="$RANLIB"
-        export STRIP="$STRIP"
-        export CFLAGS="$CFLAGS"
-        export LDFLAGS="$LDFLAGS"
-        
-        # Konfigurasi dengan parameter yang benar
-        ./Configure android-arm \
-          -D__ANDROID_API__=${{ env.API_LEVEL }} \
-          --prefix=${{ env.PREFIX }} \
-          -latomic \
-          no-shared \
-          no-asm
-        
-        make depend
-        make -j$(nproc) build_libs
-        make install_sw
+        ls -l ${{ env.PREFIX }}/lib/libssl.so
+        ls -l ${{ env.PREFIX }}/lib/libcrypto.so
 
     - name: Build cURL
       run: |
