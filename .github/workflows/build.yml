@@ -148,11 +148,12 @@ jobs:
         export PKG_CONFIG_PATH="${{ env.PREFIX }}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
         echo "🔧 Symlinking libiconv.a to common toolchain lib..."
-        ICONV_LIB=${{ env.PREFIX }}/lib/libiconv.a
-        TOOLCHAIN_LIB=${{ env.TOOLCHAIN }}/sysroot/usr/lib
-        mkdir -p $TOOLCHAIN_LIB
-        ln -sf $ICONV_LIB $TOOLCHAIN_LIB/libiconv.a
-
+        if [ ! -f "$TOOLCHAIN_LIB/libiconv.a" ]; then
+          ln -s "$ICONV_LIB" "$TOOLCHAIN_LIB/libiconv.a"
+        else
+          echo "✅ libiconv.a already exists at $TOOLCHAIN_LIB"
+        fi
+        
         echo "🔍 Checking that libiconv.a is visible to linker..."
         find $TOOLCHAIN_LIB -name 'libiconv.a' || echo "::warning ::libiconv.a not found after symlink"
         echo 'int main(){ iconv_open("UTF-8", "ASCII"); return 0; }' > test_iconv.c
