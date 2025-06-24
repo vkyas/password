@@ -81,6 +81,12 @@ jobs:
         echo "--- Sysroot Contents ---"
         ls ${{ env.SYSROOT }}/usr/lib
 
+    - name: Symlink gcc→clang in toolchain
+      run: |
+        cd ${{ env.TOOLCHAIN_DIR }}/bin
+        ln -sf armv7a-linux-androideabi19-clang arm-linux-androideabi-gcc
+        ln -sf armv7a-linux-androideabi19-clang++ arm-linux-androideabi-g++
+        
     - name: Build OpenSSL (Fixed)
       run: |
         wget -q https://www.openssl.org/source/openssl-${{ env.OPENSSL_VERSION }}.tar.gz
