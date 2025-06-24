@@ -1,4 +1,4 @@
-name: 🛠️ Build PHP for ARMv7a Android (Final Fixed & Clean)
+name: Build
 
 on:
   workflow_dispatch:
@@ -136,27 +136,28 @@ jobs:
     - name: ⚙️ Configure PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
-        export CC="${{ env.CC }}"
-        export CXX="${{ env.CXX }}"
-        export AR="${{ env.AR }}"
-        export RANLIB="${{ env.RANLIB }}"
-        export STRIP="${{ env.STRIP }}"
-        export CFLAGS="${{ env.CFLAGS }}"
-        export LDFLAGS="${{ env.LDFLAGS }}"
-        export LIBS="${{ env.LIBS }}"
-        export CPPFLAGS="-I${{ env.PREFIX }}/include"
-        export PKG_CONFIG_PATH="${{ env.PREFIX }}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-
-        ../${{ env.PHP_SOURCE }}/configure \
+        export CC="${CC}"
+        export CXX="${CXX}"
+        export AR="${AR}"
+        export RANLIB="${RANLIB}"
+        export STRIP="${STRIP}"
+        export CFLAGS="${CFLAGS} -I${PREFIX}/include"
+        export CPPFLAGS="-I${PREFIX}/include"
+        export LDFLAGS="-L${PREFIX}/lib"
+        export LIBS="${LIBS} -L${PREFIX}/lib"
+        export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+        
+        ../${PHP_SOURCE}/configure \
           --build=x86_64-pc-linux-gnu \
-          --host=${{ env.HOST_TRIPLE }} \
+          --host=${HOST_TRIPLE} \
           --prefix=/data/php \
           --with-libxml \
           --with-zlib \
-          --with-iconv=${{ env.PREFIX }} \
-          --with-jpeg-dir=${{ env.PREFIX }} \
-          --with-png-dir=${{ env.PREFIX }} \
-          --with-freetype-dir=${{ env.PREFIX }} \
+          --with-iconv=${PREFIX} \
+          --with-gd \
+          --with-jpeg-dir=${PREFIX} \
+          --with-png-dir=${PREFIX} \
+          --with-freetype-dir=${PREFIX} \
           --disable-all \
           --enable-mbstring \
           --enable-bcmath \
@@ -181,7 +182,6 @@ jobs:
           --enable-exif \
           --enable-opcache \
           --enable-ctype \
-          --enable-gd \
           --without-bz2 \
           --without-xsl \
           --without-readline \
@@ -190,7 +190,13 @@ jobs:
           --without-pear \
           --disable-cgi \
           --disable-fpm
-
+          
+    - name: 📁 Upload config.log for debugging
+      uses: actions/upload-artifact@v4
+      with:
+        name: config-log
+        path: ${{ env.WORKDIR }}/config.log
+    
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
