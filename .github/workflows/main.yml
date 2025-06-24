@@ -12,39 +12,24 @@ jobs:
     env:
       ANDROID_API: 14
       ARCH: armeabi-v7a
-      NDK_VERSION: r26d
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Set up Android NDK
+        uses: nmeum/setup-ndk@v1
+        with:
+          ndk-version: r26d
+
       - name: Set up Build Directory
         run: mkdir -p android-arm32-build
-
-      - name: Download Android NDK
-        run: |
-          mkdir -p $HOME/ndk
-          curl -o ndk.zip https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip
-          unzip ndk.zip -d $HOME/ndk
-          echo "NDK_DIR=$HOME/ndk/android-ndk-${NDK_VERSION}" >> $GITHUB_ENV
-
-      - name: Set up Environment Variables
-        run: |
-          echo "TOOLCHAIN=$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
-          echo "PATH=$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH" >> $GITHUB_ENV
 
       - name: Build Example App for Android ARMv7
         working-directory: android-arm32-build
         run: |
           export CC=armv7a-linux-androideabi${ANDROID_API}-clang
           export CXX=armv7a-linux-androideabi${ANDROID_API}-clang++
-          export AR=llvm-ar
-          export AS=llvm-as
-          export LD=ld.lld
-          export RANLIB=llvm-ranlib
-          export STRIP=llvm-strip
-
-          # Contoh: Compile hello.c ke Android binary
           echo '#include <stdio.h>
           int main() { printf("Hello from Android ARM32!\\n"); return 0; }' > hello.c
           
