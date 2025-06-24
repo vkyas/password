@@ -13,34 +13,21 @@ jobs:
 
     - name: ⚙️ Setup environment
       run: |
-        export NDK_HOME="${{ github.workspace }}/android-ndk-r25c"
-        export TOOLCHAIN="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
-        export SYSROOT="$TOOLCHAIN/sysroot"
-        export PREFIX="$SYSROOT/usr"
-        echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
-        echo "TOOLCHAIN=$TOOLCHAIN" >> $GITHUB_ENV
-        echo "SYSROOT=$SYSROOT" >> $GITHUB_ENV
-        echo "PREFIX=$PREFIX" >> $GITHUB_ENV
-
-        echo "API_LEVEL=19" >> $GITHUB_ENV
+        echo "NDK_VERSION=r25c" >> $GITHUB_ENV
         echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
+        echo "API_LEVEL=22" >> $GITHUB_ENV  # Increased to Android 7.0
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
+        
+        # Download NDK first to define paths correctly
+        wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        echo "NDK_HOME=$(pwd)/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+        echo "TOOLCHAIN=${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
+        echo "SYSROOT=${{ env.TOOLCHAIN }}/sysroot" >> $GITHUB_ENV
+        echo "PREFIX=${{ env.SYSROOT }}/usr" >> $GITHUB_ENV
 
-        echo "CC=$TOOLCHAIN/bin/armv7a-linux-androideabi${API_LEVEL}-clang" >> $GITHUB_ENV
-        echo "CXX=$TOOLCHAIN/bin/armv7a-linux-androideabi${API_LEVEL}-clang++" >> $GITHUB_ENV
-        echo "AR=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
-        echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
-        echo "STRIP=$TOOLCHAIN/bin/llvm-strip" >> $GITHUB_ENV
-
-        echo "CFLAGS=-O2 -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I$PREFIX/include" >> $GITHUB_ENV
-        echo "LDFLAGS=-Wl,--fix-cortex-a8 -Wl,--no-undefined -L$PREFIX/lib -fPIE -pie" >> $GITHUB_ENV
-        echo "LIBS=-llog -landroid" >> $GITHUB_ENV
-        echo "CPPFLAGS=-I$PREFIX/include" >> $GITHUB_ENV
-
-        echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
-
-    - name: 🧰 Install host dependencies
+    - name: 🧰 Install dependencies
       run: |
         sudo apt update
         sudo apt install -y \
@@ -49,116 +36,98 @@ jobs:
           python3 zlib1g-dev libxml2-dev libsqlite3-dev \
           libonig-dev libzip-dev libssl-dev \
           libcurl4-openssl-dev libpng-dev libjpeg-dev \
-          libfreetype6-dev libxpm-dev libxslt1-dev \
-          libreadline-dev libldap2-dev libargon2-dev \
-          libbz2-dev
+          libfreetype6-dev libxpm-dev \
+          libreadline-dev libargon2-0-dev
 
-    - name: 📦 Download Android NDK
+    - name: 🛠️ Setup toolchain
       run: |
-        wget -q https://dl.google.com/android/repository/android-ndk-r25c-linux.zip
-        unzip -q android-ndk-r25c-linux.zip
-
-    - name: 🛠️ Build zlib for ARMv7a
-      run: |
-        wget -q https://zlib.net/zlib-1.3.tar.gz
-        tar -xzf zlib-1.3.tar.gz
-        cd zlib-1.3
-        export CC="${{ env.CC }}"
-        export CFLAGS="${{ env.CFLAGS }}"
-        export LDFLAGS="${{ env.LDFLAGS }}"
-        ./configure --prefix=${{ env.PREFIX }}
-        make -j$(nproc)
-        make install
-        cd ..
-
-    - name: 🛠️ Build libpng for ARMv7a
-      run: |
-        wget -q https://downloads.sourceforge.net/project/libpng/libpng16/1.6.44/libpng-1.6.44.tar.gz
-        tar -xzf libpng-1.6.44.tar.gz
-        cd libpng-1.6.44
-        export CC="${{ env.CC }}"
-        export CFLAGS="${{ env.CFLAGS }}"
-        export LDFLAGS="${{ env.LDFLAGS }}"
-        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }}
-        make -j$(nproc)
-        make install
-        cd ..
-
-    - name: 🛠️ Build libjpeg for ARMv7a
-      run: |
-        wget -q http://ijg.org/files/jpegsrc.v9f.tar.gz
-        tar -xzf jpegsrc.v9f.tar.gz
-        cd jpeg-9f
-        export CC="${{ env.CC }}"
-        export CFLAGS="${{ env.CFLAGS }}"
-        export LDFLAGS="${{ env.LDFLAGS }}"
-        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }}
-        make -j$(nproc)
-        make install
-        cd ..
-
-    - name: 🛠️ Build freetype for ARMv7a
-      run: |
-        wget -q https://downloads.sourceforge.net/project/freetype/freetype2/2.13.2/freetype-2.13.2.tar.gz
-        tar -xzf freetype-2.13.2.tar.gz
-        cd freetype-2.13.2
-        export CC="${{ env.CC }}"
-        export CFLAGS="${{ env.CFLAGS }}"
-        export LDFLAGS="${{ env.LDFLAGS }}"
-        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }} --without-harfbuzz
-        make -j$(nproc)
-        make install
-        cd ..
-
-    - name: 🛠️ Build libxslt for ARMv7a
-      run: |
-        wget -q http://xmlsoft.org/sources/libxslt-1.1.42.tar.gz
-        tar -xzf libxslt-1.1.42.tar.gz
-        cd libxslt-1.1.42
-        export CC="${{ env.CC }}"
-        export CFLAGS="${{ env.CFLAGS }}"
-        export LDFLAGS="${{ env.LDFLAGS }}"
-        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }} --with-libxml-prefix=${{ env.PREFIX }}
-        make -j$(nproc)
-        make install
-        cd ..
-
-    - name: 🛠️ Build libbz2 for ARMv7a
-      run: |
-        wget -q https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
-        tar -xzf bzip2-1.0.8.tar.gz
-        cd bzip2-1.0.8
-        make CFLAGS="${{ env.CFLAGS }}" LDFLAGS="${{ env.LDFLAGS }}" CC="${{ env.CC }}" -j$(nproc)
-        make PREFIX=${{ env.PREFIX }} install
-        cd ..
-
-    - name: 🛠️ Build readline for ARMv7a
-      run: |
-        wget -q https://ftp.gnu.org/gnu/readline/readline-8.2.tar.gz
-        tar -xzf readline-8.2.tar.gz
-        cd readline-8.2
-        export CC="${{ env.CC }}"
-        export CFLAGS="${{ env.CFLAGS }}"
-        export LDFLAGS="${{ env.LDFLAGS }}"
-        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }}
-        make -j$(nproc)
-        make install
-        cd ..
-
-    - name: 🔍 Check dependencies
-      run: |
-        for lib in zlib png jpeg freetype xslt bz2 readline; do
-          if [ ! -f "${{ env.PREFIX }}/lib/lib${lib}.a" ] && [ ! -f "${{ env.PREFIX }}/lib/lib${lib}.so" ]; then
-            echo "Error: lib${lib} not found in ${{ env.PREFIX }}/lib"
-            exit 1
-          fi
-        done
+        echo "CC=${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang" >> $GITHUB_ENV
+        echo "CXX=${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang++" >> $GITHUB_ENV
+        echo "AR=${{ env.TOOLCHAIN }}/bin/llvm-ar" >> $GITHUB_ENV
+        echo "RANLIB=${{ env.TOOLCHAIN }}/bin/llvm-ranlib" >> $GITHUB_ENV
+        echo "STRIP=${{ env.TOOLCHAIN }}/bin/llvm-strip" >> $GITHUB_ENV
+        
+        # Fixed flags with sysroot and ARM-specific optimizations
+        echo "CFLAGS='-Os -march=armv7-a -mthumb -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -DLITTLE_ENDIAN=1234 -DBYTE_ORDER=LITTLE_ENDIAN --sysroot=${{ env.SYSROOT }}'" >> $GITHUB_ENV
+        echo "LDFLAGS='-Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie --sysroot=${{ env.SYSROOT }}'" >> $GITHUB_ENV
+        echo "LIBS='-llog -lm -ldl'" >> $GITHUB_ENV
+        echo "PATH=${{ env.TOOLCHAIN }}/bin:$PATH" >> $GITHUB_ENV
 
     - name: 📄 Download PHP
       run: |
         wget -q https://www.php.net/distributions/php-${{ env.PHP_VERSION }}.tar.gz
         tar -xzf php-${{ env.PHP_VERSION }}.tar.gz
         echo "PHP_SOURCE=php-${{ env.PHP_VERSION }}" >> $GITHUB_ENV
+
+    - name: 🔨 Build cross-compiled libraries
+      run: |
+        # Create library directory
+        mkdir -p ${{ env.PREFIX }}/lib
+        mkdir -p ${{ env.PREFIX }}/include
+
+        # Build zlib
+        wget -q https://zlib.net/zlib-1.3.tar.gz
+        tar -xzf zlib-1.3.tar.gz
+        cd zlib-1.3
+        CC=${{ env.CC }} CFLAGS=${{ env.CFLAGS }} LDFLAGS=${{ env.LDFLAGS }} \
+        ./configure --prefix=${{ env.PREFIX }} --static
+        make -j$(nproc)
+        make install
+        cd ..
+
+        # Build libxml2
+        wget -q https://download.gnome.org/sources/libxml2/2.11/libxml2-2.11.5.tar.xz
+        tar -xf libxml2-2.11.5.tar.xz
+        cd libxml2-2.11.5
+        CC=${{ env.CC }} CFLAGS="${{ env.CFLAGS }} -DNO_SOCKLEN_T" \
+        LDFLAGS=${{ env.LDFLAGS }} ./configure \
+          --host=arm-linux-androideabi \
+          --prefix=${{ env.PREFIX }} \
+          --without-python \
+          --without-lzma \
+          --enable-static \
+          --disable-shared
+        make -j$(nproc)
+        make install
+        cd ..
+
+        # Build libpng
+        wget -q https://download.sourceforge.net/libpng/libpng-1.6.40.tar.gz
+        tar -xzf libpng-1.6.40.tar.gz
+        cd libpng-1.6.40
+        CC=${{ env.CC }} CFLAGS=${{ env.CFLAGS }} LDFLAGS=${{ env.LDFLAGS }} \
+        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }} --enable-static --disable-shared
+        make -j$(nproc)
+        make install
+        cd ..
+
+        # Build libjpeg-turbo
+        wget -q https://downloads.sourceforge.net/libjpeg-turbo/libjpeg-turbo-2.1.5.1.tar.gz
+        tar -xzf libjpeg-turbo-2.1.5.1.tar.gz
+        cd libjpeg-turbo-2.1.5.1
+        mkdir build && cd build
+        cmake .. \
+          -DCMAKE_SYSTEM_NAME=Linux \
+          -DCMAKE_SYSTEM_PROCESSOR=armv7-a \
+          -DCMAKE_C_COMPILER=${{ env.CC }} \
+          -DCMAKE_C_FLAGS="${{ env.CFLAGS }}" \
+          -DCMAKE_INSTALL_PREFIX=${{ env.PREFIX }} \
+          -DENABLE_SHARED=OFF \
+          -DENABLE_STATIC=ON
+        make -j$(nproc)
+        make install
+        cd ../..
+
+        # Build freetype
+        wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.0.tar.xz
+        tar -xf freetype-2.13.0.tar.xz
+        cd freetype-2.13.0
+        CC=${{ env.CC }} CFLAGS=${{ env.CFLAGS }} LDFLAGS=${{ env.LDFLAGS }} \
+        ./configure --host=arm-linux-androideabi --prefix=${{ env.PREFIX }} --enable-static --disable-shared \
+          --with-zlib=yes --with-png=yes --with-harfbuzz=no
+        make -j$(nproc)
+        make install
+        cd ..
 
     - name: 🗂️ Create build directory
       run: |
@@ -168,17 +137,18 @@ jobs:
     - name: ⚙️ Configure PHP
       working-directory: ${{ env.WORKDIR }}
       run: |
-        set -euxo pipefail
+        # Set environment variables
         export CC="${{ env.CC }}"
         export CXX="${{ env.CXX }}"
         export AR="${{ env.AR }}"
         export RANLIB="${{ env.RANLIB }}"
         export STRIP="${{ env.STRIP }}"
         export CFLAGS="${{ env.CFLAGS }}"
-        export LDFLAGS="${{ env.LDFLAGS }}"
+        export LDFLAGS="${{ env.LDFLAGS }} -L${{ env.PREFIX }}/lib"
         export LIBS="${{ env.LIBS }}"
-        export CPPFLAGS="${{ env.CPPFLAGS }}"
+        export CPPFLAGS="-I${{ env.PREFIX }}/include"
 
+        # Run configure with corrected options
         ../${{ env.PHP_SOURCE }}/configure \
           --host=arm-linux-androideabi \
           --prefix=/php \
@@ -207,15 +177,19 @@ jobs:
           --enable-exif \
           --enable-gd \
           --enable-opcache \
+          --enable-zip \
           --with-zlib=${{ env.PREFIX }} \
-          --with-iconv=${{ env.PREFIX }} \
-          --with-bz2=${{ env.PREFIX }} \
-          --with-xsl=${{ env.PREFIX }} \
-          --with-readline=${{ env.PREFIX }} \
+          --with-iconv=php \
+          --with-gd \
+          --with-jpeg \
+          --with-freetype \
+          --with-png-dir=${{ env.PREFIX }} \
+          --with-libxml=${{ env.PREFIX }} \
           --without-pear \
           --disable-cgi \
           --disable-fpm \
-          > configure.log 2>&1 || (cat configure.log && exit 1)
+          --with-openssl=no \
+          --with-curl=no
 
     - name: 🧱 Build PHP
       working-directory: ${{ env.WORKDIR }}
@@ -223,17 +197,52 @@ jobs:
         make -j$(nproc)
         make install INSTALL_ROOT=$(pwd)/../${{ env.OUTDIR }}
 
-    - name: 🧹 Strip binaries
+    - name: 🧹 Post-install setup
+      run: |
+        # Copy php.ini
+        cp ${{ env.PHP_SOURCE }}/php.ini-development ${{ env.OUTDIR }}/php/lib/php.ini
+        
+        # Basic php.ini configuration
+        echo "date.timezone = UTC" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "display_errors = Off" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "short_open_tag = On" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "enable_dl = On" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension_dir = /php/lib/php/extensions/no-debug-non-zts-20190902" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        
+        # Enable extensions
+        echo "extension=bcmath.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=exif.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=gd.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=mbstring.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=phar.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=posix.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=shmop.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=soap.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=sockets.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=sysvmsg.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=sysvsem.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=sysvshm.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=xml.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+        echo "extension=zip.so" >> ${{ env.OUTDIR }}/php/lib/php.ini
+
+    - name: ✂️ Strip binaries
       run: |
         ${{ env.STRIP }} --strip-unneeded ${{ env.OUTDIR }}/php/bin/php
         find ${{ env.OUTDIR }}/php/lib/ -name "*.so" -exec ${{ env.STRIP }} --strip-unneeded {} \;
 
+    - name: 🔍 Verify build
+      run: |
+        file ${{ env.OUTDIR }}/php/bin/php
+        ${{ env.TOOLCHAIN }}/bin/arm-linux-androideabi-readelf -h ${{ env.OUTDIR }}/php/bin/php | grep 'Machine:'
+        echo "PHP version:"
+        ${{ env.OUTDIR }}/php/bin/php -v
+
     - name: 📦 Package output
       run: |
-        tar -czf php-full-arm32.tar.gz -C ${{ env.OUTDIR }} .
+        tar -czf php-arm32-full-android.tar.gz -C ${{ env.OUTDIR }} .
 
     - name: ☁️ Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: php-full-arm32
-        path: php-full-arm32.tar.gz
+        name: php-arm32-android-full
+        path: php-arm32-full-android.tar.gz
