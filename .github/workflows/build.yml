@@ -20,14 +20,13 @@ jobs:
         echo "API_LEVEL=19" >> $GITHUB_ENV
         echo "WORKDIR=build-arm32" >> $GITHUB_ENV
         echo "OUTDIR=output-arm32" >> $GITHUB_ENV
-        echo "TOOLCHAIN_DIR=arm-toolchain" >> $GITHUB_ENV
-        echo "SYSROOT=$(pwd)/arm-toolchain/sysroot" >> $GITHUB_ENV
-        echo "PREFIX=$(pwd)/arm-toolchain/sysroot/usr" >> $GITHUB_ENV
+        echo "TOOLCHAIN=${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
+        echo "SYSROOT=${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot" >> $GITHUB_ENV
+        echo "PREFIX=${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr" >> $GITHUB_ENV
 
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get remove clang
         sudo apt-get install -y \
           autoconf \
           automake \
@@ -51,54 +50,29 @@ jobs:
         unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
         echo "NDK_HOME=$(pwd)/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
-    - name: Create standalone toolchain
-      run: |
-        ${{ env.NDK_HOME }}/build/tools/make_standalone_toolchain.py \
-          --arch arm \
-          --api ${{ env.API_LEVEL }} \
-          --install-dir ${{ env.TOOLCHAIN_DIR }} \
-          --force
-        
-        echo "TOOLCHAIN_PATH=$(pwd)/${{ env.TOOLCHAIN_DIR }}/bin" >> $GITHUB_ENV
-        echo "PATH=$(pwd)/${{ env.TOOLCHAIN_DIR }}/bin:$PATH" >> $GITHUB_ENV
-
     - name: Setup compiler
       run: |
-        echo "CC=armv7a-linux-androideabi19-clang" >> $GITHUB_ENV
-        echo "CXX=armv7a-linux-androideabi19-clang++" >> $GITHUB_ENV
-        echo "AR=arm-linux-androideabi-ar" >> $GITHUB_ENV
-        echo "RANLIB=arm-linux-androideabi-ranlib" >> $GITHUB_ENV
-        echo "STRIP=arm-linux-androideabi-strip" >> $GITHUB_ENV
+        echo "CC=${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang" >> $GITHUB_ENV
+        echo "CXX=${{ env.TOOLCHAIN }}/bin/armv7a-linux-androideabi${{ env.API_LEVEL }}-clang++" >> $GITHUB_ENV
+        echo "AR=${{ env.TOOLCHAIN }}/bin/llvm-ar" >> $GITHUB_ENV
+        echo "RANLIB=${{ env.TOOLCHAIN }}/bin/llvm-ranlib" >> $GITHUB_ENV
+        echo "STRIP=${{ env.TOOLCHAIN }}/bin/llvm-strip" >> $GITHUB_ENV
         echo "CFLAGS=\"-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I${{ env.PREFIX }}/include\"" >> $GITHUB_ENV
         echo "LDFLAGS=\"-Wl,--fix-cortex-a8 -Wl,--no-undefined -L${{ env.PREFIX }}/lib -fPIE -pie\"" >> $GITHUB_ENV
         echo "LIBS=\"-llog -landroid\"" >> $GITHUB_ENV
-        
-    - name: Verify OpenSSL compiler
-      run: |
-        echo "--- Using CC: ${{ env.CC }} ---"
-        which ${{ env.CC }}
-        ${{ env.CC }} --version
-        echo "--- Sysroot Contents ---"
-        ls ${{ env.SYSROOT }}/usr/lib
+        echo "PATH=${{ env.TOOLCHAIN }}/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Symlink gcc→clang in toolchain
-      run: |
-        cd ${{ env.TOOLCHAIN_DIR }}/bin
-        ln -sf armv7a-linux-androideabi19-clang arm-linux-androideabi-gcc
-        ln -sf armv7a-linux-androideabi19-clang++ arm-linux-androideabi-g++
-        
     - name: Build OpenSSL (Fixed)
       run: |
         wget -q https://www.openssl.org/source/openssl-${{ env.OPENSSL_VERSION }}.tar.gz
         tar -xzf openssl-${{ env.OPENSSL_VERSION }}.tar.gz
         cd openssl-${{ env.OPENSSL_VERSION }}
         
-        # Gunakan compiler yang spesifik
+        # Gunakan toolchain NDK langsung
         export CC="${{ env.CC }}"
         export AR="${{ env.AR }}"
         export RANLIB="${{ env.RANLIB }}"
         export STRIP="${{ env.STRIP }}"
-        export ANDROID_NDK_HOME="${{ env.NDK_HOME }}"
         
         # Konfigurasi dengan parameter yang benar
         ./Configure android-arm \
@@ -224,8 +198,8 @@ jobs:
 
     - name: Strip binaries
       run: |
-        arm-linux-androideabi-strip --strip-unneeded ${{ env.OUTDIR }}/php/bin/php
-        find ${{ env.OUTDIR }}/php/lib/ -name "*.so" -exec arm-linux-androideabi-strip --strip-unneeded {} \;
+        ${{ env.STRIP }} --strip-unneeded ${{ env.OUTDIR }}/php/bin/php
+        find ${{ env.OUTDIR }}/php/lib/ -name "*.so" -exec ${{ env.STRIP }} --strip-unneeded {} \;
 
     - name: Verify binary
       run: |
