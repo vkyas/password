@@ -1,4 +1,4 @@
-name: Build
+name: Build PHP for ARMv7a Android
 
 on:
   workflow_dispatch:
@@ -6,109 +6,154 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    env:
-      NDK_VERSION: r25c
-      PHP_VERSION: 7.4.33
-      API_LEVEL: 19
-      WORKDIR: build-arm32
-      OUTDIR: output-arm32
-      TOOLCHAIN_DIR: arm-toolchain
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Install host tools
+    - name: Setup environment
+      run: |
+        echo "NDK_VERSION=r25c" >> $GITHUB_ENV
+        echo "PHP_VERSION=7.4.33" >> $GITHUB_ENV
+        echo "CURL_VERSION=8.8.0" >> $GITHUB_ENV
+        echo "OPENSSL_VERSION=1.1.1w" >> $GITHUB_ENV
+        echo "API_LEVEL=22" >> $GITHUB_ENV
+        echo "WORKDIR=build-arm32" >> $GITHUB_ENV
+        echo "OUTDIR=output-arm32" >> $GITHUB_ENV
+        echo "TOOLCHAIN_DIR=arm-toolchain" >> $GITHUB_ENV
+        echo "SYSROOT=$(pwd)/arm-toolchain/sysroot" >> $GITHUB_ENV
+        echo "PREFIX=$(pwd)/arm-toolchain/sysroot/usr" >> $GITHUB_ENV
+
+    - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y autoconf automake libtool make wget unzip file python3 git
+        sudo apt-get install -y \
+          autoconf \
+          automake \
+          libtool \
+          pkg-config \
+          bison \
+          re2c \
+          make \
+          wget \
+          unzip \
+          file \
+          python3 \
+          zlib1g-dev \
+          libxml2-dev \
+          libsqlite3-dev \
+          libonig-dev
 
     - name: Download Android NDK
       run: |
-        wget -q https://dl.google.com/android/repository/android-ndk-r25c-linux.zip
-        unzip -q android-ndk-r25c-linux.zip
-        echo "ANDROID_NDK_HOME=$(pwd)/android-ndk-r25c" >> $GITHUB_ENV
+        wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        echo "NDK_HOME=$(pwd)/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
-    - name: Setup NDK toolchain in PATH
-      run: |
-        echo "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-    
-    - name: Set Android API and compiler vars
-      run: |
-        echo "ANDROID_API=19" >> $GITHUB_ENV
-        echo "TARGET_HOST=armv7a-linux-androideabi" >> $GITHUB_ENV
-        echo "CC=${TARGET_HOST}${ANDROID_API}-clang" >> $GITHUB_ENV
-        echo "AR=arm-linux-androideabi-ar" >> $GITHUB_ENV
-        echo "RANLIB=arm-linux-androideabi-ranlib" >> $GITHUB_ENV
-        echo "STRIP=arm-linux-androideabi-strip" >> $GITHUB_ENV
-
-    - name: Build OpenSSL for Android
-      run: |
-        git clone --depth 1 https://github.com/openssl/openssl.git
-        cd openssl
-        ./Configure android-arm -D__ANDROID_API__=$ANDROID_API --prefix=$(pwd)/output
-        make -j$(nproc)
-        make install_sw
-        echo "OPENSSL_PREFIX=$(pwd)/output" >> $GITHUB_ENV
-        
     - name: Create standalone toolchain
       run: |
-        python3 $NDK_HOME/build/tools/make_standalone_toolchain.py \
-          --arch arm --api $API_LEVEL --install-dir $TOOLCHAIN_DIR --force
-        echo "SYSROOT=$(pwd)/${TOOLCHAIN_DIR}/sysroot" >> $GITHUB_ENV
-        echo "PATH=$(pwd)/${TOOLCHAIN_DIR}/bin:$PATH" >> $GITHUB_ENV
+        ${{ env.NDK_HOME }}/build/tools/make_standalone_toolchain.py \
+          --arch arm \
+          --api ${{ env.API_LEVEL }} \
+          --install-dir ${{ env.TOOLCHAIN_DIR }} \
+          --force
+        
+        echo "TOOLCHAIN_PATH=$(pwd)/${{ env.TOOLCHAIN_DIR }}/bin" >> $GITHUB_ENV
+        echo "PATH=$(pwd)/${{ env.TOOLCHAIN_DIR }}/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Set cross-compile vars
+    - name: Setup compiler
       run: |
         echo "CC=arm-linux-androideabi-clang" >> $GITHUB_ENV
         echo "CXX=arm-linux-androideabi-clang++" >> $GITHUB_ENV
         echo "AR=arm-linux-androideabi-ar" >> $GITHUB_ENV
         echo "RANLIB=arm-linux-androideabi-ranlib" >> $GITHUB_ENV
         echo "STRIP=arm-linux-androideabi-strip" >> $GITHUB_ENV
+        echo "CFLAGS=\"-Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC -I${{ env.PREFIX }}/include\"" >> $GITHUB_ENV
+        echo "LDFLAGS=\"-Wl,--fix-cortex-a8 -Wl,--no-undefined -L${{ env.PREFIX }}/lib -fPIE -pie\"" >> $GITHUB_ENV
+        echo "LIBS=\"-llog -landroid\"" >> $GITHUB_ENV
 
-    # Build cURL
-    - name: Build cURL for Android
+    - name: Build OpenSSL (Fixed)
       run: |
-        git clone --depth 1 https://github.com/curl/curl.git
-        cd curl
-        ./buildconf
-        export PATH=$GITHUB_WORKSPACE/$TOOLCHAIN_DIR/bin:$PATH
-        ./configure --host=arm-linux-androideabi \
-          --with-ssl=$GITHUB_WORKSPACE/openssl/openssl-android \
-          --disable-shared --enable-static \
-          --prefix=$(pwd)/curl-android
+        wget -q https://www.openssl.org/source/openssl-${{ env.OPENSSL_VERSION }}.tar.gz
+        tar -xzf openssl-${{ env.OPENSSL_VERSION }}.tar.gz
+        cd openssl-${{ env.OPENSSL_VERSION }}
+        
+        # Perbaikan konfigurasi untuk Clang
+        export ANDROID_NDK_ROOT=${{ env.NDK_HOME }}
+        export PATH=${{ env.TOOLCHAIN_PATH }}:$PATH
+        
+        ./Configure android-arm -D__ANDROID_API__=${{ env.API_LEVEL }} \
+          --prefix=${{ env.PREFIX }} \
+          -latomic \
+          no-shared \
+          no-asm \
+          -D__ANDROID_MIN_SDK_VERSION__=${{ env.API_LEVEL }} \
+          CC="arm-linux-androideabi-clang" \
+          CXX="arm-linux-androideabi-clang++" \
+          AR="arm-linux-androideabi-ar" \
+          RANLIB="arm-linux-androideabi-ranlib" \
+          LD="arm-linux-androideabi-ld"
+        
+        make depend
+        make -j$(nproc) build_libs
+        make install_sw
+
+    - name: Build cURL
+      run: |
+        wget -q https://curl.se/download/curl-${{ env.CURL_VERSION }}.tar.gz
+        tar -xzf curl-${{ env.CURL_VERSION }}.tar.gz
+        cd curl-${{ env.CURL_VERSION }}
+        
+        ./configure \
+          --host=arm-linux-androideabi \
+          --prefix=${{ env.PREFIX }} \
+          --with-ssl=${{ env.PREFIX }} \
+          --disable-shared \
+          --enable-static \
+          --without-librtmp \
+          --disable-ftp \
+          --disable-ldap \
+          --disable-ldaps \
+          --disable-rtsp \
+          --disable-proxy \
+          --disable-dict \
+          --disable-telnet \
+          --disable-tftp \
+          --disable-pop3 \
+          --disable-imap \
+          --disable-smtp \
+          --disable-gopher \
+          --disable-manual \
+          --disable-ipv6 \
+          --disable-verbose \
+          --disable-sspi \
+          --disable-crypto-auth \
+          --disable-ntlm-wb \
+          --disable-tls-srp \
+          --disable-unix-sockets \
+          --disable-cookies \
+          --disable-http-auth \
+          CC="$CC" CXX="$CXX" AR="$AR" RANLIB="$RANLIB" STRIP="$STRIP" \
+          CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS"
+        
         make -j$(nproc)
         make install
-        echo "CURL_PREFIX=$(pwd)/curl-android" >> $GITHUB_ENV
-
-    # (Similarly build libxml2, oniguruma, sqlite3, sodium, argon2 if needed;
-    # set LIBXML2_PREFIX, ONIG_PREFIX, SQLITE3_PREFIX, SODIUM_PREFIX, ARGON2_PREFIX)
 
     - name: Download PHP source
       run: |
-        wget -q https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz
-        tar -xzf php-${PHP_VERSION}.tar.gz
+        wget -q https://www.php.net/distributions/php-${{ env.PHP_VERSION }}.tar.gz
+        tar -xzf php-${{ env.PHP_VERSION }}.tar.gz
+        echo "PHP_SOURCE=php-${{ env.PHP_VERSION }}" >> $GITHUB_ENV
 
-    - name: Create build directories
+    - name: Create build environment
       run: |
-        mkdir -p ${WORKDIR} ${OUTDIR}
+        mkdir -p ${{ env.WORKDIR }}
+        mkdir -p ${{ env.OUTDIR }}
 
     - name: Configure PHP
-      working-directory: ${{ runner.workspace }}/$WORKDIR
+      working-directory: ${{ env.WORKDIR }}
       run: |
-        export SYSROOT=${SYSROOT}
-        export CC=arm-linux-androideabi-clang
-        export AR=arm-linux-androideabi-ar
-        export RANLIB=arm-linux-androideabi-ranlib
-        # include all prefixes
-        export OPENSSL_PREFIX=${OPENSSL_PREFIX}
-        export CURL_PREFIX=${CURL_PREFIX}
-        # If built libxml2: export LIBXML2_PREFIX=...
-        # If built oniguruma: export ONIG_PREFIX=...
-        # etc.
-        export CFLAGS="-I$OPENSSL_PREFIX/include -I$CURL_PREFIX/include -Os -march=armv7-a -mfloat-abi=softfp -mfpu=neon -fPIE -fPIC"
-        export LDFLAGS="-L$OPENSSL_PREFIX/lib -L$CURL_PREFIX/lib -Wl,--fix-cortex-a8 -Wl,--no-undefined -fPIE -pie"
-        export CPPFLAGS="$CFLAGS"
-        ../php-${PHP_VERSION}/configure \
+        ../${{ env.PHP_SOURCE }}/configure \
           --host=arm-linux-androideabi \
           --prefix=/php \
           --disable-all \
@@ -129,41 +174,57 @@ jobs:
           --enable-phar \
           --enable-posix \
           --enable-tokenizer \
-          --with-libxml=${LIBXML2_PREFIX:-/usr} \
+          --with-libxml \
           --with-zlib \
-          --with-curl=$CURL_PREFIX \
+          --with-curl=${{ env.PREFIX }} \
+          --with-openssl=${{ env.PREFIX }} \
           --without-pear \
-          --with-openssl=$OPENSSL_PREFIX \
+          --with-password-argon2 \
+          --with-sodium \
           --without-iconv \
           --without-pcre-jit \
           --disable-cgi \
           --disable-fpm \
+          --disable-mbregex \
           CFLAGS="$CFLAGS" \
           LDFLAGS="$LDFLAGS" \
-          CPPFLAGS="$CPPFLAGS" \
-          LIBS="-lz"
+          CPPFLAGS="-I${{ env.PREFIX }}/include" \
+          LIBS="-lcurl -lssl -lcrypto -lz -ldl"
+
     - name: Build PHP
-      working-directory: ${{ runner.workspace }}/$WORKDIR
+      working-directory: ${{ env.WORKDIR }}
       run: |
         make -j$(nproc)
-        make install INSTALL_ROOT=$(pwd)/../${OUTDIR}
+        make install INSTALL_ROOT=$(pwd)/../${{ env.OUTDIR }}
 
-    - name: Post-install and strip
+    - name: Post-install steps
       run: |
-        cp php-${PHP_VERSION}/php.ini-development ${OUTDIR}/php/lib/php.ini
-        sed -i 's/;date.timezone =/date.timezone = UTC/' ${OUTDIR}/php/lib/php.ini
-        sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/' ${OUTDIR}/php/lib/php.ini
-        arm-linux-androideabi-strip --strip-unneeded ${OUTDIR}/php/bin/php
-        find ${OUTDIR}/php/lib/php/extensions -name "*.so" -exec arm-linux-androideabi-strip --strip-unneeded {} \;
+        cp ${{ env.PHP_SOURCE }}/php.ini-development ${{ env.OUTDIR }}/php/lib/php.ini
+        sed -i 's/;date.timezone =/date.timezone = UTC/' ${{ env.OUTDIR }}/php/lib/php.ini
+        sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/' ${{ env.OUTDIR }}/php/lib/php.ini
+        
+        # Salin library yang diperlukan
+        cp ${{ env.PREFIX }}/lib/libcrypto.so.1.1 ${{ env.OUTDIR }}/php/lib/
+        cp ${{ env.PREFIX }}/lib/libssl.so.1.1 ${{ env.OUTDIR }}/php/lib/
+        cp ${{ env.PREFIX }}/lib/libcurl.so ${{ env.OUTDIR }}/php/lib/
 
-    - name: Verify and package
+    - name: Strip binaries
       run: |
-        file ${OUTDIR}/php/bin/php
-        readelf -h ${OUTDIR}/php/bin/php | grep 'Machine:'
-        tar -czf php-arm32-android.tar.gz -C ${OUTDIR} .
+        arm-linux-androideabi-strip --strip-unneeded ${{ env.OUTDIR }}/php/bin/php
+        find ${{ env.OUTDIR }}/php/lib/ -name "*.so" -exec arm-linux-androideabi-strip --strip-unneeded {} \;
+
+    - name: Verify binary
+      run: |
+        file ${{ env.OUTDIR }}/php/bin/php
+        readelf -h ${{ env.OUTDIR }}/php/bin/php | grep 'Machine:'
+        ldd ${{ env.OUTDIR }}/php/bin/php || true
+
+    - name: Package artifacts
+      run: |
+        tar -czf php-arm32-android.tar.gz -C ${{ env.OUTDIR }} .
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: php-arm32-android
         path: php-arm32-android.tar.gz
-        
