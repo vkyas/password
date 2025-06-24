@@ -72,29 +72,32 @@ jobs:
         echo "LDFLAGS=\"-Wl,--fix-cortex-a8 -Wl,--no-undefined -L${{ env.PREFIX }}/lib -fPIE -pie\"" >> $GITHUB_ENV
         echo "LIBS=\"-llog -landroid\"" >> $GITHUB_ENV
 
-    - name: Build OpenSSL (Manual Configuration)
+    - name: Build OpenSSL (Alternative)
       run: |
         wget -q https://www.openssl.org/source/openssl-${{ env.OPENSSL_VERSION }}.tar.gz
         tar -xzf openssl-${{ env.OPENSSL_VERSION }}.tar.gz
         cd openssl-${{ env.OPENSSL_VERSION }}
         
-        # Set environment variables manually
-        export ANDROID_NDK_HOME=${{ env.NDK_HOME }}
+        # Set environment
+        export ANDROID_NDK_ROOT=${{ env.NDK_HOME }}
         export PATH=${{ env.TOOLCHAIN_PATH }}:$PATH
-        export CC=arm-linux-androideabi-clang
-        export AR=arm-linux-androideabi-ar
-        export RANLIB=arm-linux-androideabi-ranlib
-        export LD=arm-linux-androideabi-ld
-        export STRIP=arm-linux-androideabi-strip
         
-        # Configure OpenSSL
-        ./Configure android-arm -D__ANDROID_API__=${{ env.API_LEVEL }} \
+        # Configure using Makefile
+        make clean
+        make distclean
+        
+        ./config \
           --prefix=${{ env.PREFIX }} \
-          -latomic \
+          --openssldir=${{ env.PREFIX }}/etc/ssl \
           no-shared \
           no-asm \
-          -fPIE \
-          -fPIC
+          -fPIC \
+          -D__ANDROID_API__=${{ env.API_LEVEL}} \
+          CC="arm-linux-androideabi-clang" \
+          AR="arm-linux-androideabi-ar" \
+          RANLIB="arm-linux-androideabi-ranlib" \
+          CFLAGS="$CFLAGS" \
+          LDFLAGS="$LDFLAGS"
         
         make depend
         make -j$(nproc) build_libs
