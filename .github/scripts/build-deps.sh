@@ -10,9 +10,14 @@ build_lib() {
   CONFIGURE_OPTS=$3
   DIR=$4
 
-  curl -LO $URL
-  tar -xf *.tar.*
-  cd $DIR || exit 1
+  echo "📥 Downloading $NAME from $URL..."
+  curl -L --retry 3 -O "$URL"
+  echo "🔍 Checking file type..."
+  file $(basename "$URL")
+
+  echo "📦 Extracting..."
+  tar --auto-compress -xf *.tar.* || (echo "❌ Failed to extract $NAME" && exit 1)
+  cd "$DIR" || exit 1
 
   ./configure \
     --host=$TARGET \
