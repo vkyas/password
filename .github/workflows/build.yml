@@ -72,21 +72,27 @@ jobs:
 
     - name: 🔤 Build OpenSSL
       run: |
+        # Buat symlink untuk "menipu" skrip OpenSSL agar menemukan "gcc"
+        # yang sebenarnya adalah clang.
+        ln -s ${{ env.CC }} ${{ env.TOOLCHAIN }}/bin/arm-linux-androideabi-gcc
+
+        # Tambahkan symlink ini ke PATH agar bisa ditemukan
+        export PATH=${{ env.TOOLCHAIN }}/bin:$PATH
+
+        # Download dan ekstrak source code
         wget -q https://www.openssl.org/source/openssl-3.3.1.tar.gz
         tar -xzf openssl-3.3.1.tar.gz
         cd openssl-3.3.1
-        ./Configure android-arm -D__ANDROID_API__=${{ env.API_LEVEL }} --prefix=${{ env.PREFIX }} no-shared no-tests
-        make -j$(nproc)
-        make install_sw # install_sw hanya menginstal library dan header
 
-    - name: 🔤 Build libxml2
-      run: |
-        wget -q https://download.gnome.org/sources/libxml2/2.12/libxml2-2.12.7.tar.xz
-        tar -xf libxml2-2.12.7.tar.xz
-        cd libxml2-2.12.7
-        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static --without-python --with-zlib=${{ env.PREFIX }}
+        # Sekarang jalankan konfigurasi. Skrip akan menemukan "gcc" palsu kita.
+        # Kita juga perlu secara eksplisit mengatur CROSS_COMPILE agar skrip tidak bingung.
+        ./Configure android-arm -D__ANDROID_API__=${{ env.API_LEVEL }} \
+          --prefix=${{ env.PREFIX }} \
+          no-shared \
+          no-tests
+          
         make -j$(nproc)
-        make install
+        make install_sw
 
     - name: 🔤 Build libiconv
       run: |
@@ -96,7 +102,16 @@ jobs:
         ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static
         make -j$(nproc)
         make install
-
+        
+    - name: 🔤 Build libxml2
+      run: |
+        wget -q https://download.gnome.org/sources/libxml2/2.12/libxml2-2.12.7.tar.xz
+        tar -xf libxml2-2.12.7.tar.xz
+        cd libxml2-2.12.7
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static --without-python --with-zlib=${{ env.PREFIX }}
+        make -j$(nproc)
+        make install
+        
     - name: 🔤 Build Oniguruma (for mbstring)
       run: |
         wget -q https://github.com/kkos/oniguruma/releases/download/v6.9.9/onig-6.9.9.tar.gz
