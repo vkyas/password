@@ -107,7 +107,10 @@ jobs:
         wget -q https://download.gnome.org/sources/libxml2/2.12/libxml2-2.12.7.tar.xz
         tar -xf libxml2-2.12.7.tar.xz
         cd libxml2-2.12.7
-        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static --without-python --with-zlib=${{ env.PREFIX }}
+        # ### PERBAIKAN: Tambahkan --without-lzma untuk menonaktifkan dependensi yang tidak perlu.
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} \
+          --disable-shared --enable-static --without-python \
+          --with-zlib=${{ env.PREFIX }} --without-lzma
         make -j$(nproc)
         make install
         
