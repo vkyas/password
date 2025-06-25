@@ -38,7 +38,7 @@ export CPPFLAGS="-I$DEPS/include"
 export LDFLAGS="-L$DEPS/lib"
 
 # Build libraries
-build_lib "zlib" https://zlib.net/zlib-1.2.13.tar.gz "" zlib-1.2.13
+build_lib "zlib" https://zlib.net/fossils/zlib-1.2.13.tar.gz "" zlib-1.2.13
 build_lib "libiconv" https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz "" libiconv-1.17
 build_lib "libxml2" https://gitlab.gnome.org/GNOME/libxml2/-/archive/v2.12.6/libxml2-v2.12.6.tar.gz "" libxml2-v2.12.6
 build_lib "oniguruma" https://github.com/kkos/oniguruma/releases/download/v6.9.8/onig-6.9.8.tar.gz "" onig-6.9.8
