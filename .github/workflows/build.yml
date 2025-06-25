@@ -70,27 +70,26 @@ jobs:
         make -j$(nproc)
         make install
 
-    - name: 🔤 Build OpenSSL
+    - name: 🔤 Build OpenSSL (Robust Method)
       run: |
-        # Buat symlink untuk "menipu" skrip OpenSSL agar menemukan "gcc"
-        # yang sebenarnya adalah clang.
-        ln -s ${{ env.CC }} ${{ env.TOOLCHAIN }}/bin/arm-linux-androideabi-gcc
-
-        # Tambahkan symlink ini ke PATH agar bisa ditemukan
-        export PATH=${{ env.TOOLCHAIN }}/bin:$PATH
-
-        # Download dan ekstrak source code
         wget -q https://www.openssl.org/source/openssl-3.3.1.tar.gz
         tar -xzf openssl-3.3.1.tar.gz
         cd openssl-3.3.1
 
-        # Sekarang jalankan konfigurasi. Skrip akan menemukan "gcc" palsu kita.
-        # Kita juga perlu secara eksplisit mengatur CROSS_COMPILE agar skrip tidak bingung.
-        ./Configure android-arm -D__ANDROID_API__=${{ env.API_LEVEL }} \
+        # Pastikan PATH toolchain diekspor untuk sesi ini
+        export PATH="${{ env.TOOLCHAIN }}/bin:$PATH"
+
+        # KONFIGURASI ULANG: Gunakan target linux-armv4 yang generik.
+        # Skrip akan secara otomatis menggunakan variabel CC, CFLAGS, dan LDFLAGS
+        # yang sudah kita atur di level environment job.
+        # Ini adalah cara yang benar untuk NDK berbasis Clang.
+        ./Configure linux-armv4 \
+          -D__ANDROID_API__=${{ env.API_LEVEL }} \
           --prefix=${{ env.PREFIX }} \
           no-shared \
           no-tests
-          
+
+        # Lanjutkan proses build seperti biasa
         make -j$(nproc)
         make install_sw
 
