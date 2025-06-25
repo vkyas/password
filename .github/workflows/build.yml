@@ -1,0 +1,96 @@
+name: Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      PHP_VERSION: 8.3.8
+      API_LEVEL: 22
+      ARCH: armv7a
+      TARGET: arm-linux-androideabi
+      NDK_VERSION: r25c
+      WORKDIR: build-arm32
+      OUTDIR: output-arm32
+
+    steps:
+    - name: 📥 Checkout repo
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Prepare directories
+      run: |
+        mkdir -p $WORKDIR $OUTDIR deps
+
+    - name: 📦 Download Android NDK
+      run: |
+        curl -LO https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip
+        unzip -q android-ndk-${NDK_VERSION}-linux.zip
+        echo "NDK=$(pwd)/android-ndk-${NDK_VERSION}" >> $GITHUB_ENV
+
+    - name: 🧱 Setup toolchain
+      run: |
+        export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
+        echo "TOOLCHAIN=$TOOLCHAIN" >> $GITHUB_ENV
+        echo "CC=$TOOLCHAIN/bin/${TARGET}${API_LEVEL}-clang" >> $GITHUB_ENV
+        echo "CXX=$TOOLCHAIN/bin/${TARGET}${API_LEVEL}-clang++" >> $GITHUB_ENV
+        echo "AR=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+        echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
+        echo "STRIP=$TOOLCHAIN/bin/llvm-strip" >> $GITHUB_ENV
+        echo "SYSROOT=$TOOLCHAIN/sysroot" >> $GITHUB_ENV
+        echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
+
+    - name: 📚 Build dependencies
+      run: |
+        bash .github/build-deps.sh
+
+    - name: ⚙️ Configure PHP
+      working-directory: ${{ env.WORKDIR }}
+      run: |
+        wget https://www.php.net/distributions/php-${PHP_VERSION}.tar.xz
+        tar -xf php-${PHP_VERSION}.tar.xz
+        cd php-${PHP_VERSION}
+
+        export CC=${{ env.CC }}
+        export CXX=${{ env.CXX }}
+        export AR=${{ env.AR }}
+        export RANLIB=${{ env.RANLIB }}
+        export STRIP=${{ env.STRIP }}
+        export CPPFLAGS="-I$(pwd)/../../deps/include"
+        export LDFLAGS="-L$(pwd)/../../deps/lib"
+        export PKG_CONFIG_PATH="$(pwd)/../../deps/lib/pkgconfig"
+
+        ./configure \
+          --host=${TARGET} \
+          --prefix=$(pwd)/../../${OUTDIR} \
+          --with-sysroot=${SYSROOT} \
+          --disable-all \
+          --enable-cli \
+          --enable-mbstring \
+          --enable-libxml \
+          --enable-pdo \
+          --with-pdo-mysql \
+          --with-curl \
+          --with-openssl \
+          --with-zlib \
+          --with-iconv \
+          --with-libxml \
+          --with-jpeg \
+          --with-png \
+          --with-freetype \
+          --without-pear \
+          --enable-gd \
+          --enable-sockets
+
+    - name: 🧱 Build PHP
+      working-directory: ${{ env.WORKDIR }}/php-${{ env.PHP_VERSION }}
+      run: |
+        make -j$(nproc) V=1 || (cat config.log && false)
+        make install
+
+    - name: 📤 Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: php-android-arm32
+        path: ${{ env.OUTDIR }}
