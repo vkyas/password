@@ -1,80 +1,191 @@
-name: build
+name: Build PHP for Android (ARMv7)
 
 on:
   workflow_dispatch:
 
+env:
+  NDK_VERSION: r26d     # ### REKOMENDASI: Gunakan versi NDK yang lebih stabil seperti r26d untuk kompatibilitas lebih baik.
+  PHP_VERSION: 8.3.8    # ### REKOMENDASI: Gunakan versi stabil (8.3.8) daripada versi dev (8.4.x) untuk menghindari bug tak terduga.
+  API_LEVEL: 24         # ### REKOMENDASI: API 22 sudah sangat tua. API 24 (Android 7.0) adalah target minimal yang lebih modern.
+  HOST_TRIPLE: armv7a-linux-androideabi
+  WORKDIR: ${{ github.workspace }}/build-arm32
+  OUTDIR: ${{ github.workspace }}/output-arm32
+  
 jobs:
   build:
-    runs-on: ubuntu-24.04
-    env:
-      PHP_VERSION: 8.3.8
-      API_LEVEL: 22
-      ARCH: armv7a
-      TARGET: arm-linux-androideabi
-      NDK_VERSION: r25c
-      WORKDIR: build-arm32
-      OUTDIR: output-arm32
-
-      NDK: /home/runner/work/password/password/android-ndk-r25c
-      TOOLCHAIN: /home/runner/work/password/password/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64
-      CC: /home/runner/work/password/password/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/bin/arm-linux-androideabi22-clang
-      CXX: /home/runner/work/password/password/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/bin/arm-linux-androideabi22-clang++
-      AR: /home/runner/work/password/password/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
-      RANLIB: /home/runner/work/password/password/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
-      STRIP: /home/runner/work/password/password/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-      SYSROOT: /home/runner/work/password/password/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/sysroot
-      PATH: /home/runner/work/password/password/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/bin:/usr/local/bin:/usr/bin:/bin
+    runs-on: ubuntu-22.04 # ### REKOMENDASI: Gunakan LTS yang lebih baru tetapi stabil.
 
     steps:
-    - name: 📥 Checkout source
+    - name: 📥 Checkout repo
       uses: actions/checkout@v4
 
-    - name: 📚 Build dependencies
+    - name: 🧰 Install Build Tools
       run: |
-        chmod +x .github/scripts/build-deps.sh
-        bash .github/scripts/build-deps.sh
+        sudo apt-get update
+        # ### PERBAIKAN: Hapus semua paket '-dev'. Ini sangat penting.
+        # Kita hanya butuh tool untuk build, bukan library untuk host.
+        sudo apt-get install -y --no-install-recommends \
+          autoconf automake libtool pkg-config \
+          bison re2c make wget unzip file \
+          python3 cmake
+
+    - name: 📦 Download Android NDK
+      run: |
+        wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
+        echo "NDK_HOME=${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+
+    - name: 🛠️ Setup Toolchain Environment
+      run: |
+        TOOLCHAIN="${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64"
+        # ### PERBAIKAN: PREFIX harus menjadi direktori sysroot yang bersih untuk dependensi kita.
+        PREFIX="${{ github.workspace }}/sysroot-arm32"
+        mkdir -p $PREFIX
+
+        echo "TOOLCHAIN=$TOOLCHAIN" >> $GITHUB_ENV
+        echo "PREFIX=$PREFIX" >> $GITHUB_ENV
+        
+        echo "CC=$TOOLCHAIN/bin/${{ env.HOST_TRIPLE }}${{ env.API_LEVEL }}-clang" >> $GITHUB_ENV
+        echo "CXX=$TOOLCHAIN/bin/${{ env.HOST_TRIPLE }}${{ env.API_LEVEL }}-clang++" >> $GITHUB_ENV
+        echo "AR=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+        echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
+        echo "STRIP=$TOOLCHAIN/bin/llvm-strip" >> $GITHUB_ENV
+        
+        # ### PERBAIKAN: CFLAGS dan LDFLAGS harus menunjuk ke sysroot NDK dan PREFIX kita.
+        echo "CFLAGS=--sysroot=$TOOLCHAIN/sysroot -I$PREFIX/include -Os -fPIC" >> $GITHUB_ENV
+        echo "LDFLAGS=--sysroot=$TOOLCHAIN/sysroot -L$PREFIX/lib -Wl,-rpath-link=$PREFIX/lib -pie" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig" >> $GITHUB_ENV
+        echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
+
+    # ======================================================================
+    # ### BAGIAN BARU: Cross-compile semua dependensi dari source
+    # ======================================================================
+
+    - name: 🔤 Build zlib
+      run: |
+        wget -q https://zlib.net/zlib-1.3.1.tar.gz
+        tar -xzf zlib-1.3.1.tar.gz
+        cd zlib-1.3.1
+        ./configure --prefix=${{ env.PREFIX }} --static
+        make -j$(nproc)
+        make install
+
+    - name: 🔤 Build OpenSSL
+      run: |
+        wget -q https://www.openssl.org/source/openssl-3.3.1.tar.gz
+        tar -xzf openssl-3.3.1.tar.gz
+        cd openssl-3.3.1
+        ./Configure android-arm -D__ANDROID_API__=${{ env.API_LEVEL }} --prefix=${{ env.PREFIX }} no-shared no-tests
+        make -j$(nproc)
+        make install_sw # install_sw hanya menginstal library dan header
+
+    - name: 🔤 Build libxml2
+      run: |
+        wget -q https://download.gnome.org/sources/libxml2/2.12/libxml2-2.12.7.tar.xz
+        tar -xf libxml2-2.12.7.tar.xz
+        cd libxml2-2.12.7
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static --without-python --with-zlib=${{ env.PREFIX }}
+        make -j$(nproc)
+        make install
+
+    - name: 🔤 Build libiconv
+      run: |
+        wget -q https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz
+        tar -xzf libiconv-1.17.tar.gz
+        cd libiconv-1.17
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static
+        make -j$(nproc)
+        make install
+
+    - name: 🔤 Build Oniguruma (for mbstring)
+      run: |
+        wget -q https://github.com/kkos/oniguruma/releases/download/v6.9.9/onig-6.9.9.tar.gz
+        tar -xzf onig-6.9.9.tar.gz
+        cd onig-6.9.9
+        ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static
+        make -j$(nproc)
+        make install
+
+    - name: 📄 Download PHP source
+      run: |
+        wget -q https://www.php.net/distributions/php-${{ env.PHP_VERSION }}.tar.gz
+        tar -xzf php-${{ env.PHP_VERSION }}.tar.gz
+        echo "PHP_SOURCE_DIR=php-${{ env.PHP_VERSION }}" >> $GITHUB_ENV
+    
+    - name: 🩹 Patch PHP source for Android
+      run: |
+        cd ${{ env.PHP_SOURCE_DIR }}
+        # ### PERBAIKAN KUNCI: Patch dns.c untuk mengatasi error res_ninit
+        echo "Patching ext/standard/dns.c..."
+        sed -i 's/res_ninit/res_init/g' ext/standard/dns.c
+        # Patch tambahan untuk iconv yang terkadang diperlukan
+        sed -i 's/ICONV_SECOND_ARG_CONST/1/' configure
 
     - name: ⚙️ Configure PHP
       run: |
-        mkdir -p $WORKDIR && cd $WORKDIR
-        wget https://www.php.net/distributions/php-${PHP_VERSION}.tar.xz
-        tar -xf php-${PHP_VERSION}.tar.xz
-        cd php-${PHP_VERSION}
-
-        export CPPFLAGS="-I$(pwd)/../../../deps/include"
-        export LDFLAGS="-L$(pwd)/../../../deps/lib"
-        export PKG_CONFIG_PATH="$(pwd)/../../../deps/lib/pkgconfig"
-
+        cd ${{ env.PHP_SOURCE_DIR }}
+        ./buildconf --force
+        
+        # Opsi 'shared' akan membuat file .so untuk setiap ekstensi
         ./configure \
-          --host=$TARGET \
-          --prefix=$(pwd)/../../../$OUTDIR \
-          --with-sysroot=$SYSROOT \
+          --build=x86_64-pc-linux-gnu \
+          --host=${{ env.HOST_TRIPLE }} \
+          --prefix=${{ env.OUTDIR }} \
+          --with-config-file-path=${{ env.OUTDIR }}/ini \
+          --with-config-file-scan-dir=${{ env.OUTDIR }}/conf.d \
           --disable-all \
           --enable-cli \
-          --enable-mbstring \
-          --enable-libxml \
-          --enable-pdo \
-          --with-pdo-mysql \
-          --with-curl \
+          --with-zlib=shared \
           --with-openssl \
-          --with-zlib \
-          --with-iconv \
-          --with-libxml \
-          --with-jpeg \
-          --with-png \
-          --with-freetype \
-          --enable-gd \
-          --enable-sockets \
-          --without-pear
+          --with-libxml=shared \
+          --with-iconv=${{ env.PREFIX }} \
+          --enable-bcmath=shared \
+          --enable-calendar=shared \
+          --enable-ctype=shared \
+          --enable-dom=shared \
+          --enable-exif=shared \
+          --enable-fileinfo=shared \
+          --enable-filter=shared \
+          --enable-ftp=shared \
+          --enable-mbstring=shared \
+          --enable-phar=shared \
+          --enable-posix=shared \
+          --enable-session=shared \
+          --enable-sockets=shared \
+          --enable-tokenizer=shared \
+          --enable-xml=shared \
+          --enable-xmlreader=shared \
+          --enable-xmlwriter=shared \
+          --enable-simplexml=shared \
+          --enable-opcache=shared
 
-    - name: 🧱 Compile PHP
+    - name: 🧱 Build PHP
       run: |
-        cd $WORKDIR/php-${PHP_VERSION}
-        make -j$(nproc) V=1 || (cat config.log && false)
+        cd ${{ env.PHP_SOURCE_DIR }}
+        make -j$(nproc)
         make install
 
-    - name: 📤 Upload Output
+    - name: 🧹 Post-install setup and Package
+      run: |
+        # Strip biner utama
+        ${{ env.STRIP }} --strip-unneeded ${{ env.OUTDIR }}/bin/php
+        # Strip semua modul .so
+        find ${{ env.OUTDIR }} -name "*.so" -exec ${{ env.STRIP }} --strip-unneeded {} \;
+
+        # Buat file php.ini
+        PHP_INI_DIR=${{ env.OUTDIR }}/ini
+        mkdir -p $PHP_INI_DIR
+        cp ${{ env.PHP_SOURCE_DIR }}/php.ini-production $PHP_INI_DIR/php.ini
+
+        # Tambahkan konfigurasi dasar ke php.ini
+        echo "date.timezone = UTC" >> $PHP_INI_DIR/php.ini
+        echo "extension_dir = \"${{ env.OUTDIR }}/lib/php/extensions/no-debug-non-zts-20240409\"" >> $PHP_INI_DIR/php.ini # Versi ZTS mungkin berbeda
+        
+        # Buat paket tarball
+        tar -czvf php-android-arm32.tar.gz -C ${{ env.OUTDIR }} .
+
+    - name: ☁️ Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: php-arm32-output
-        path: ${{ env.OUTDIR }}
+        name: php-android-arm32
+        path: php-android-arm32.tar.gz
