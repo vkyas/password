@@ -1,19 +1,19 @@
-name: Build PHP for Android (ARMv7)
+name: Build
 
 on:
   workflow_dispatch:
 
 env:
-  NDK_VERSION: r26d     # ### REKOMENDASI: Gunakan versi NDK yang lebih stabil seperti r26d untuk kompatibilitas lebih baik.
-  PHP_VERSION: 8.3.8    # ### REKOMENDASI: Gunakan versi stabil (8.3.8) daripada versi dev (8.4.x) untuk menghindari bug tak terduga.
-  API_LEVEL: 24         # ### REKOMENDASI: API 22 sudah sangat tua. API 24 (Android 7.0) adalah target minimal yang lebih modern.
+  NDK_VERSION: r26d
+  PHP_VERSION: 8.3.8
+  API_LEVEL: 22
   HOST_TRIPLE: armv7a-linux-androideabi
   WORKDIR: ${{ github.workspace }}/build-arm32
   OUTDIR: ${{ github.workspace }}/output-arm32
-  
+
 jobs:
   build:
-    runs-on: ubuntu-22.04 # ### REKOMENDASI: Gunakan LTS yang lebih baru tetapi stabil.
+    runs-on: ubuntu-22.04
 
     steps:
     - name: 📥 Checkout repo
@@ -22,12 +22,10 @@ jobs:
     - name: 🧰 Install Build Tools
       run: |
         sudo apt-get update
-        # ### PERBAIKAN: Hapus semua paket '-dev'. Ini sangat penting.
-        # Kita hanya butuh tool untuk build, bukan library untuk host.
         sudo apt-get install -y --no-install-recommends \
           autoconf automake libtool pkg-config \
           bison re2c make wget unzip file \
-          python3 cmake
+          python3 cmake patch
 
     - name: 📦 Download Android NDK
       run: |
@@ -38,7 +36,6 @@ jobs:
     - name: 🛠️ Setup Toolchain Environment
       run: |
         TOOLCHAIN="${{ env.NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64"
-        # ### PERBAIKAN: PREFIX harus menjadi direktori sysroot yang bersih untuk dependensi kita.
         PREFIX="${{ github.workspace }}/sysroot-arm32"
         mkdir -p $PREFIX
 
@@ -51,14 +48,13 @@ jobs:
         echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
         echo "STRIP=$TOOLCHAIN/bin/llvm-strip" >> $GITHUB_ENV
         
-        # ### PERBAIKAN: CFLAGS dan LDFLAGS harus menunjuk ke sysroot NDK dan PREFIX kita.
         echo "CFLAGS=--sysroot=$TOOLCHAIN/sysroot -I$PREFIX/include -Os -fPIC" >> $GITHUB_ENV
         echo "LDFLAGS=--sysroot=$TOOLCHAIN/sysroot -L$PREFIX/lib -Wl,-rpath-link=$PREFIX/lib -pie" >> $GITHUB_ENV
         echo "PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig" >> $GITHUB_ENV
         echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
 
     # ======================================================================
-    # ### BAGIAN BARU: Cross-compile semua dependensi dari source
+    # Cross-compile semua dependensi dari source
     # ======================================================================
 
     - name: 🔤 Build zlib
@@ -75,21 +71,13 @@ jobs:
         wget -q https://www.openssl.org/source/openssl-3.3.1.tar.gz
         tar -xzf openssl-3.3.1.tar.gz
         cd openssl-3.3.1
-
-        # Pastikan PATH toolchain diekspor untuk sesi ini
         export PATH="${{ env.TOOLCHAIN }}/bin:$PATH"
-
-        # KONFIGURASI ULANG: Gunakan target linux-armv4 yang generik.
-        # Skrip akan secara otomatis menggunakan variabel CC, CFLAGS, dan LDFLAGS
-        # yang sudah kita atur di level environment job.
-        # Ini adalah cara yang benar untuk NDK berbasis Clang.
+        # ### PERBAIKAN: Gunakan target 'linux-armv4' untuk NDK berbasis Clang.
         ./Configure linux-armv4 \
           -D__ANDROID_API__=${{ env.API_LEVEL }} \
           --prefix=${{ env.PREFIX }} \
           no-shared \
           no-tests
-
-        # Lanjutkan proses build seperti biasa
         make -j$(nproc)
         make install_sw
 
@@ -101,7 +89,7 @@ jobs:
         ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} --disable-shared --enable-static
         make -j$(nproc)
         make install
-        
+
     - name: 🔤 Build libxml2
       run: |
         wget -q https://download.gnome.org/sources/libxml2/2.12/libxml2-2.12.7.tar.xz
@@ -113,7 +101,7 @@ jobs:
           --with-zlib=${{ env.PREFIX }} --without-lzma
         make -j$(nproc)
         make install
-        
+
     - name: 🔤 Build Oniguruma (for mbstring)
       run: |
         wget -q https://github.com/kkos/oniguruma/releases/download/v6.9.9/onig-6.9.9.tar.gz
@@ -123,20 +111,58 @@ jobs:
         make -j$(nproc)
         make install
 
+    # ======================================================================
+    # Persiapan dan Build PHP
+    # ======================================================================
+
     - name: 📄 Download PHP source
       run: |
         wget -q https://www.php.net/distributions/php-${{ env.PHP_VERSION }}.tar.gz
         tar -xzf php-${{ env.PHP_VERSION }}.tar.gz
         echo "PHP_SOURCE_DIR=php-${{ env.PHP_VERSION }}" >> $GITHUB_ENV
-    
-    - name: 🩹 Patch PHP source for Android
+
+    - name: 🩹 Apply Android DNS Compatibility Patch
       run: |
         cd ${{ env.PHP_SOURCE_DIR }}
-        # ### PERBAIKAN KUNCI: Patch dns.c untuk mengatasi error res_ninit
-        echo "Patching ext/standard/dns.c..."
-        sed -i 's/res_ninit/res_init/g' ext/standard/dns.c
-        # Patch tambahan untuk iconv yang terkadang diperlukan
-        sed -i 's/ICONV_SECOND_ARG_CONST/1/' configure
+        # ### PERBAIKAN KUNCI: Gunakan patch komprehensif, bukan 'sed'.
+        cat <<'EOF' > android_dns.patch
+--- a/ext/standard/dns.c
++++ b/ext/standard/dns.c
+@@ -29,6 +29,20 @@
+ #include "ext/standard/basic_functions.h"
+ #include "ext/standard/php_dns.h"
+ 
++#ifdef __ANDROID__
++/*
++ * Bionic (Android's C library) has a different DNS resolver API.
++ * This compatibility layer maps the expected functions to what's
++ * available on Bionic.
++ */
++#include <resolv.h>
++#include <sys/param.h>
++#include <arpa/nameser_compat.h>
++#define res_nsearch(res, dname, Class, type, answer, anslen) res_search(dname, Class, type, answer, anslen)
++#define res_ninit(res) res_init()
++#define res_nclose(res) /* Bionic's res_close is not public */
++#endif
++
+ #if HAVE_DNS_H
+ #include <dns.h>
+ #endif
+--- a/configure.ac
++++ b/configure.ac
+@@ -2505,7 +2505,7 @@
+   AC_DEFINE(HAVE_LIBBIND, 1, [ ])
+   PHP_CHECK_FUNC_LIB(res_search, resolv, [
+     PHP_CHECK_FUNC_LIB(dn_skipname, resolv, [
+-      AC_DEFINE(HAVE_DN_SKIPNAME, 1, [ ])
++      AC_DEFINE(HAVE_DN_SKIPNAME, 1, [Whether dn_skipname() is available])
+     ])
+   ])
+ ])
+EOF
+        echo "Applying DNS patch..."
+        patch -p1 < android_dns.patch
 
     - name: ⚙️ Configure PHP
       run: |
@@ -184,9 +210,8 @@ jobs:
 
     - name: 🧹 Post-install setup and Package
       run: |
-        # Strip biner utama
+        # Strip biner utama dan modul .so
         ${{ env.STRIP }} --strip-unneeded ${{ env.OUTDIR }}/bin/php
-        # Strip semua modul .so
         find ${{ env.OUTDIR }} -name "*.so" -exec ${{ env.STRIP }} --strip-unneeded {} \;
 
         # Buat file php.ini
@@ -194,9 +219,12 @@ jobs:
         mkdir -p $PHP_INI_DIR
         cp ${{ env.PHP_SOURCE_DIR }}/php.ini-production $PHP_INI_DIR/php.ini
 
+        # ### PERBAIKAN: Gunakan direktori ZTS yang benar untuk PHP 8.3
+        ZTS_DIR="no-debug-non-zts-20230831"
+        
         # Tambahkan konfigurasi dasar ke php.ini
         echo "date.timezone = UTC" >> $PHP_INI_DIR/php.ini
-        echo "extension_dir = \"${{ env.OUTDIR }}/lib/php/extensions/no-debug-non-zts-20240409\"" >> $PHP_INI_DIR/php.ini # Versi ZTS mungkin berbeda
+        echo "extension_dir = \"${{ env.OUTDIR }}/lib/php/extensions/$ZTS_DIR\"" >> $PHP_INI_DIR/php.ini
         
         # Buat paket tarball
         tar -czvf php-android-arm32.tar.gz -C ${{ env.OUTDIR }} .
