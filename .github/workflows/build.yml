@@ -113,36 +113,43 @@ jobs:
 
     - name: 🩹 Apply Android DNS Compatibility Patch
       run: |
-        # METODE FINAL: Membuat file patch secara dinamis untuk menghindari semua error manual.
         echo "--- a/ext/standard/dns.c
         +++ b/ext/standard/dns.c
         @@ -29,6 +29,22 @@
-         #include \"ext/standard/basic_functions.h\"
-         #include \"ext/standard/php_dns.h\"
-         
+        #include \"ext/standard/basic_functions.h\"
+        #include \"ext/standard/php_dns.h\"
+     
         +#ifdef __ANDROID__
         +/*
-        + * Bionic (Androids C library) has a different DNS resolver API.
+        + * Bionic (Android's C library) has a different DNS resolver API.
         + * It lacks the thread-safe res_n* functions and other features
-        + * that PHPs DNS code expects from a glibc-like environment.
-        + * This compatibility layer maps the expected functions to whats
+        + * that PHP's DNS code expects from a glibc-like environment.
+        + * This compatibility layer maps the expected functions to what's
         + * available on Bionic.
         + */
         +#include <resolv.h>
         +#include <sys/param.h>
         +#include <netdb.h> /* for dn_skipname */
         +#include <arpa/nameser_compat.h>
-        +#define res_nsearch(res, dname, Class, type, answer, anslen) res_search(dname, Class, type, answer, anslen)
+        +#define res_nsearch(res, dname, class, type, answer, anslen) res_search(dname, class, type, answer, anslen)
         +#define res_ninit(res) res_init()
-        +#define res_nclose(res) /* Bionics res_close is not public */
+        +#define res_nclose(res) /* Bionic's res_close is not public */
         +#endif
         +
-         #if HAVE_DNS_H
-         #include <dns.h>
-         #endif" > ~/android_dns.patch
-
+        #if HAVE_DNS_H
+        #include <dns.h>
+        #endif" > ~/android_dns.patch
+    
+        echo "Patch content:"
+        cat ~/android_dns.patch
+    
         echo "Applying DNS patch..."
-        patch -p1 -d ${{ env.PHP_SOURCE_DIR }} < ~/android_dns.patch
+        if patch -p1 -d ${{ env.PHP_SOURCE_DIR }} < ~/android_dns.patch; then
+            echo "Patch applied successfully."
+        else
+            echo "Failed to apply patch."
+        exit 1
+        fi
 
     - name: ⚙️ Configure PHP
       run: |
