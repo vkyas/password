@@ -112,46 +112,10 @@ jobs:
         echo "PHP_SOURCE_DIR=php-${{ env.PHP_VERSION }}" >> $GITHUB_ENV
 
     - name: 🩹 Apply Android DNS Compatibility Patch
-      run: | # <-- PERHATIKAN KARAKTER '|' INI. INI SANGAT PENTING!
-        cd ${{ env.PHP_SOURCE_DIR }}
-        cat <<'EOF' > android_dns.patch
-        --- a/ext/standard/dns.c
-        +++ b/ext/standard/dns.c
-        @@ -29,6 +29,20 @@
-         #include "ext/standard/basic_functions.h"
-         #include "ext/standard/php_dns.h"
-         
-        +#ifdef __ANDROID__
-        +/*
-        + * Bionic (Android's C library) has a different DNS resolver API.
-        + * This compatibility layer maps the expected functions to what's
-        + * available on Bionic.
-        + */
-        +#include <resolv.h>
-        +#include <sys/param.h>
-        +#include <arpa/nameser_compat.h>
-        +#define res_nsearch(res, dname, Class, type, answer, anslen) res_search(dname, Class, type, answer, anslen)
-        +#define res_ninit(res) res_init()
-        +#define res_nclose(res) /* Bionic's res_close is not public */
-        +#endif
-        +
-         #if HAVE_DNS_H
-         #include <dns.h>
-         #endif
-        --- a/configure.ac
-        +++ b/configure.ac
-        @@ -2505,7 +2505,7 @@
-           AC_DEFINE(HAVE_LIBBIND, 1, [ ])
-           PHP_CHECK_FUNC_LIB(res_search, resolv, [
-             PHP_CHECK_FUNC_LIB(dn_skipname, resolv, [
-        -      AC_DEFINE(HAVE_DN_SKIPNAME, 1, [ ])
-        +      AC_DEFINE(HAVE_DN_SKIPNAME, 1, [Whether dn_skipname() is available])
-             ])
-           ])
-         ])
-        EOF
-        echo "Applying DNS patch..."
-        patch -p1 < android_dns.patch
+      run: |
+        # Menerapkan patch dari file eksternal untuk menghindari masalah format.
+        # Perintah ini jauh lebih stabil daripada menggunakan 'here-document'.
+        patch -p1 -d ${{ env.PHP_SOURCE_DIR }} < patches/android_dns.patch
 
     - name: ⚙️ Configure PHP
       run: |
