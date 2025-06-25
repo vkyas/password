@@ -1,4 +1,4 @@
-name: Build
+name: Build PHP for Android (ARMv7)
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
 env:
   NDK_VERSION: r26d
   PHP_VERSION: 8.3.8
-  API_LEVEL: 22
+  API_LEVEL: 24
   HOST_TRIPLE: armv7a-linux-androideabi
   WORKDIR: ${{ github.workspace }}/build-arm32
   OUTDIR: ${{ github.workspace }}/output-arm32
@@ -53,10 +53,6 @@ jobs:
         echo "PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig" >> $GITHUB_ENV
         echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
 
-    # ======================================================================
-    # Cross-compile semua dependensi dari source
-    # ======================================================================
-
     - name: 🔤 Build zlib
       run: |
         wget -q https://zlib.net/zlib-1.3.1.tar.gz
@@ -72,7 +68,6 @@ jobs:
         tar -xzf openssl-3.3.1.tar.gz
         cd openssl-3.3.1
         export PATH="${{ env.TOOLCHAIN }}/bin:$PATH"
-        # ### PERBAIKAN: Gunakan target 'linux-armv4' untuk NDK berbasis Clang.
         ./Configure linux-armv4 \
           -D__ANDROID_API__=${{ env.API_LEVEL }} \
           --prefix=${{ env.PREFIX }} \
@@ -95,7 +90,6 @@ jobs:
         wget -q https://download.gnome.org/sources/libxml2/2.12/libxml2-2.12.7.tar.xz
         tar -xf libxml2-2.12.7.tar.xz
         cd libxml2-2.12.7
-        # ### PERBAIKAN: Tambahkan --without-lzma untuk menonaktifkan dependensi yang tidak perlu.
         ./configure --host=${{ env.HOST_TRIPLE }} --prefix=${{ env.PREFIX }} \
           --disable-shared --enable-static --without-python \
           --with-zlib=${{ env.PREFIX }} --without-lzma
@@ -111,10 +105,6 @@ jobs:
         make -j$(nproc)
         make install
 
-    # ======================================================================
-    # Persiapan dan Build PHP
-    # ======================================================================
-
     - name: 📄 Download PHP source
       run: |
         wget -q https://www.php.net/distributions/php-${{ env.PHP_VERSION }}.tar.gz
@@ -124,7 +114,6 @@ jobs:
     - name: 🩹 Apply Android DNS Compatibility Patch
       run: |
         cd ${{ env.PHP_SOURCE_DIR }}
-        # ### PERBAIKAN KUNCI: Gunakan patch komprehensif, bukan 'sed'.
         cat <<'EOF' > android_dns.patch
 --- a/ext/standard/dns.c
 +++ b/ext/standard/dns.c
@@ -169,7 +158,6 @@ EOF
         cd ${{ env.PHP_SOURCE_DIR }}
         ./buildconf --force
         
-        # Opsi 'shared' akan membuat file .so untuk setiap ekstensi
         ./configure \
           --build=x86_64-pc-linux-gnu \
           --host=${{ env.HOST_TRIPLE }} \
@@ -219,10 +207,8 @@ EOF
         mkdir -p $PHP_INI_DIR
         cp ${{ env.PHP_SOURCE_DIR }}/php.ini-production $PHP_INI_DIR/php.ini
 
-        # ### PERBAIKAN: Gunakan direktori ZTS yang benar untuk PHP 8.3
         ZTS_DIR="no-debug-non-zts-20230831"
         
-        # Tambahkan konfigurasi dasar ke php.ini
         echo "date.timezone = UTC" >> $PHP_INI_DIR/php.ini
         echo "extension_dir = \"${{ env.OUTDIR }}/lib/php/extensions/$ZTS_DIR\"" >> $PHP_INI_DIR/php.ini
         
